@@ -13,6 +13,7 @@ import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import authRouter from './routes/auth.js';
 import dashboardRouter from './routes/dashboard.js';
 import { notificationsRouter, pushRouter } from './routes/notifications.js';
+import momentsRouter from './routes/moments.js';
 import { startReminderJobs } from './jobs/reminders.js';
 import { bedsRouter, expensesRouter, harvestsRouter, plantsRouter, savingsRouter } from './routes/resources.js';
 
@@ -30,6 +31,8 @@ app.use(
       directives: {
         'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         'font-src': ["'self'", 'https://fonts.gstatic.com'],
+        // Moment photos come from Cloudinary; blob: is the local preview before upload.
+        'img-src': ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
       },
     },
   }),
@@ -42,8 +45,12 @@ app.use(cookieParser());
 // JSON, which a cross-site HTML form cannot send without a CORS preflight.
 // req.is() returns null when there is no body at all (e.g. logout) and false
 // for any non-JSON body — including an empty form post, which sends Content-Length: 0.
+// Photo uploads must be multipart, which a form *can* send cross-site, so they
+// also need a custom header — and custom headers always force a preflight.
 app.use('/api', (req, _res, next) => {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.is('application/json') === false) {
+  const photoUpload =
+    req.method === 'POST' && req.path === '/moments' && req.is('multipart/form-data') && req.get('X-Requested-With') === 'fetch';
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.is('application/json') === false && !photoUpload) {
     return next(new HttpError(415, 'Requests must be sent as JSON.'));
   }
   next();
@@ -62,6 +69,7 @@ app.use('/api/expenses', expensesRouter);
 app.use('/api/harvests', harvestsRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/moments', momentsRouter);
 app.use('/api', notFoundHandler);
 
 // In production, serve the built React app. The SPA itself shows only the

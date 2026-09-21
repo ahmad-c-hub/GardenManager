@@ -17,7 +17,7 @@ export function cors(req, res, next) {
 
   if (req.method === 'OPTIONS') {
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
     res.set('Access-Control-Max-Age', '600');
     return res.sendStatus(204);
   }

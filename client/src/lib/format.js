@@ -68,6 +68,26 @@ export function relativeDays(iso) {
   return -n < 60 ? `${-n} days ago` : `${Math.round(-n / 30)} months ago`;
 }
 
+const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+const TIME_STEPS = [
+  ['year', 365 * 86_400],
+  ['month', 30 * 86_400],
+  ['week', 7 * 86_400],
+  ['day', 86_400],
+  ['hour', 3_600],
+  ['minute', 60],
+];
+
+/** "just now", "5 minutes ago", "yesterday", "2 days ago" for a timestamp. */
+export function timeAgo(timestamp) {
+  const seconds = Math.round((new Date(timestamp) - Date.now()) / 1000);
+  if (Math.abs(seconds) < 45) return 'just now';
+  for (const [unit, size] of TIME_STEPS) {
+    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
+  }
+  return rtf.format(Math.round(seconds / 60), 'minute');
+}
+
 /** Group rows by the 'YYYY-MM' of a date field, keeping order. */
 export function groupByMonth(rows, dateField) {
   const groups = [];
