@@ -12,11 +12,12 @@ import { parseId, validate } from './validate.js';
  *  selectSql  – SELECT … FROM … (with joins) used for reads, no WHERE/ORDER BY
  *  orderBy    – ORDER BY clause for lists
  *  filters    – optional (reqQuery, addParam) => array of WHERE clauses
+ *  onCreate   – optional (row, req) => void, called after a successful create
  *
  * Column and table names come from this code, never from the request, and every
  * value is passed as a query parameter.
  */
-export function crudRouter({ table, alias, schema, selectSql, orderBy, filters }) {
+export function crudRouter({ table, alias, schema, selectSql, orderBy, filters, onCreate }) {
   const router = Router();
 
   async function findById(id) {
@@ -49,7 +50,9 @@ export function crudRouter({ table, alias, schema, selectSql, orderBy, filters }
       `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING id`,
       Object.values(data),
     );
-    res.status(201).json(await findById(rows[0].id));
+    const created = await findById(rows[0].id);
+    res.status(201).json(created);
+    onCreate?.(created, req);
   });
 
   router.put('/:id', async (req, res) => {

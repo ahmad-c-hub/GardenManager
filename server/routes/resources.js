@@ -1,11 +1,16 @@
 import { badRequest } from '../lib/errors.js';
 import { crudRouter } from '../lib/crud.js';
+import { notifyActivity } from '../lib/push.js';
 import { parseQueryDate } from '../lib/validate.js';
 
 export const PLANT_STATUSES = ['planted', 'growing', 'harvested', 'removed'];
 export const EXPENSE_CATEGORIES = ['seeds', 'soil', 'tools', 'water', 'fertilizer', 'other'];
 
 const MAX_AMOUNT = 99_999_999.99; // NUMERIC(10,2)
+
+// Same currency the client displays (VITE_CURRENCY is read from the shared .env).
+const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: process.env.VITE_CURRENCY || 'USD' });
+const firstName = (user) => (user.display_name || user.email).split(' ')[0];
 
 function optionalId(raw, name) {
   if (raw === undefined || raw === '') return undefined;
@@ -83,6 +88,11 @@ export const savingsRouter = crudRouter({
   selectSql: 'SELECT s.* FROM savings s',
   orderBy: 's.saved_on DESC, s.id DESC',
   filters: (q, addParam) => dateRange(q, addParam, 's.saved_on'),
+  onCreate(row, req) {
+    notifyActivity(req.user.id, 'New deposit', `${firstName(req.user)} added ${money.format(row.amount)} to the garden fund.`, {
+      url: '/savings',
+    });
+  },
 });
 
 export const expensesRouter = crudRouter({
@@ -107,6 +117,12 @@ export const expensesRouter = crudRouter({
       clauses.push(`e.category = ${addParam(q.category)}`);
     }
     return clauses;
+  },
+  onCreate(row, req) {
+    const what = row.description ? ` on ${row.description}` : ` on ${row.category}`;
+    notifyActivity(req.user.id, 'New expense', `${firstName(req.user)} spent ${money.format(row.amount)}${what}.`, {
+      url: '/expenses',
+    });
   },
 });
 
@@ -134,5 +150,10 @@ export const harvestsRouter = crudRouter({
     if (plantId) clauses.push(`h.plant_id = ${addParam(plantId)}`);
     if (bedId) clauses.push(`h.bed_id = ${addParam(bedId)}`);
     return clauses;
+  },
+  onCreate(row, req) {
+    notifyActivity(req.user.id, 'New harvest', `${firstName(req.user)} harvested ${row.quantity_kg} kg of ${row.crop_name}.`, {
+      url: '/harvests',
+    });
   },
 });

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sprout, Wheat, X } from 'lucide-react';
+import { Bell, LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sprout, Wheat, X } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
+import { api } from '../lib/api.js';
+import { currentSubscription } from '../lib/push.js';
 import { BrandMark, CornerFrond } from './Botanical.jsx';
 
 const NAV = [
@@ -11,6 +13,7 @@ const NAV = [
   { to: '/expenses', label: 'Expenses', icon: Receipt },
   { to: '/garden', label: 'Beds & Plants', icon: Sprout },
   { to: '/harvests', label: 'Harvests', icon: Wheat },
+  { to: '/notifications', label: 'Notifications', icon: Bell },
 ];
 
 function Brand({ light }) {
@@ -39,11 +42,39 @@ function useIsMobile() {
   return mobile;
 }
 
+/**
+ * Push plumbing that needs the router: open the page a tapped notification
+ * points at, and keep this device's subscription linked to whoever is signed in.
+ */
+function usePushSync(userId) {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMessage = (event) => {
+      if (event.data?.type === 'navigate' && typeof event.data.url === 'string' && event.data.url.startsWith('/')) {
+        navigate(event.data.url);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!userId || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    // Re-registers the subscription in case the server pruned it or another person used this device.
+    currentSubscription()
+      .then((sub) => sub && api.post('/push/subscribe', { subscription: sub.toJSON() }))
+      .catch(() => {});
+  }, [userId]);
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  usePushSync(user?.id);
 
   // Close the drawer whenever the route changes, and on Escape.
   useEffect(() => setDrawerOpen(false), [location.pathname]);

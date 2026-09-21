@@ -12,6 +12,8 @@ import { cors } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import authRouter from './routes/auth.js';
 import dashboardRouter from './routes/dashboard.js';
+import { notificationsRouter, pushRouter } from './routes/notifications.js';
+import { startReminderJobs } from './jobs/reminders.js';
 import { bedsRouter, expensesRouter, harvestsRouter, plantsRouter, savingsRouter } from './routes/resources.js';
 
 getJwtSecret(); // Fail fast at startup if the secret is missing or weak.
@@ -58,13 +60,25 @@ app.use('/api/plants', plantsRouter);
 app.use('/api/savings', savingsRouter);
 app.use('/api/expenses', expensesRouter);
 app.use('/api/harvests', harvestsRouter);
+app.use('/api/push', pushRouter);
+app.use('/api/notifications', notificationsRouter);
 app.use('/api', notFoundHandler);
 
 // In production, serve the built React app. The SPA itself shows only the
 // login page until /api/auth/me succeeds, and holds no data of its own.
 const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client/dist');
 if (isProduction && existsSync(clientDist)) {
-  app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
+  app.use(
+    express.static(clientDist, {
+      index: false,
+      maxAge: '1h',
+      setHeaders(res, filePath) {
+        // The service worker and manifest must be re-checked on every load so
+        // updates reach installed apps promptly.
+        if (['sw.js', 'manifest.json'].includes(path.basename(filePath))) res.setHeader('Cache-Control', 'no-cache');
+      },
+    }),
+  );
   app.get('/{*splat}', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }
 
@@ -74,3 +88,5 @@ const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   console.log(`🌱 GardenManager API listening on http://localhost:${port}`);
 });
+
+startReminderJobs();

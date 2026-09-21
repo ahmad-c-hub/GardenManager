@@ -30,6 +30,17 @@ const checkers = {
     // Store at 2 decimal places, matching the NUMERIC(…,2) columns.
     return { value: Math.round(num * 100) / 100 };
   },
+  integer(value, rule) {
+    const num = toNumber(value);
+    if (!Number.isInteger(num)) return 'must be a whole number';
+    if (rule.min !== undefined && num < rule.min) return `must be at least ${rule.min}`;
+    if (rule.max !== undefined && num > rule.max) return `must be at most ${rule.max}`;
+    return { value: num };
+  },
+  boolean(value) {
+    if (typeof value !== 'boolean') return 'must be true or false';
+    return { value };
+  },
   id(value) {
     const num = toNumber(value);
     if (!Number.isInteger(num) || num < 1) return 'must be a valid id';

@@ -12,19 +12,21 @@ Stack: Node.js + Express, React (Vite), and Neon Postgres through the raw `pg` d
 
 ```
 GardenManager/
-├── migrations/        SQL migrations (001_init.sql)
+├── migrations/        SQL migrations (001_init, 002_notifications)
 ├── server/            Express API
 │   ├── db.js          the shared pg Pool (TLS)
-│   ├── lib/           validation, CRUD router factory, errors, config
+│   ├── lib/           validation, CRUD router factory, errors, config, web push
 │   ├── middleware/    auth (JWT cookie) + error handling
-│   ├── routes/        auth, dashboard, beds/plants/savings/expenses/harvests
+│   ├── jobs/          daily + monthly reminder cron jobs
+│   ├── routes/        auth, dashboard, beds/plants/savings/expenses/harvests, push/notifications
 │   └── scripts/       migrate, seed, add-user
 └── client/            React + Vite frontend
     └── src/
         ├── theme/     design tokens and styles (CSS custom properties)
         ├── components/
         ├── lib/       API client, auth context, formatting, hooks
-        └── pages/     Login, Dashboard, Savings, Expenses, Garden, Harvests
+        ├── sw.js      service worker: app-shell cache + push handling
+        └── pages/     Login, Dashboard, Savings, Expenses, Garden, Harvests, Notifications
 ```
 
 ## Setup
@@ -55,6 +57,8 @@ cp .env.example .env
 | `NODE_ENV`      | no       | `production` serves the built app, marks the cookie Secure and trusts one proxy hop |
 | `ALLOWED_ORIGIN`| no       | Comma-separated extra origins allowed to call the API cross-origin (e.g. an Android WebView). Not needed for the web app |
 | `VITE_CURRENCY` | no       | Currency code for display, default `USD` |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | no | Web push keys (see [Notifications](#notifications)). Without them, notifications are off |
+| `REMINDER_TIMEZONE` | no  | IANA timezone for reminder times, default `UTC` (e.g. `Europe/London`) |
 
 `.env` is git-ignored. Never commit it.
 
@@ -124,11 +128,48 @@ Create a **Web Service** from the repo with:
 - Build command: `npm run build`
 - Start command: `npm start`
 - Pre-deploy command (paid plans): `npm run migrate`. On the free plan, run it once from your machine against the same `DATABASE_URL`.
-- Environment: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, and optionally `VITE_CURRENCY` and `ALLOWED_ORIGIN`. Render sets `PORT` itself.
+- Environment: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, and optionally `REMINDER_TIMEZONE`, `VITE_CURRENCY` and `ALLOWED_ORIGIN`. Render sets `PORT` itself.
+- Reminders run on a timer inside the web service, so they only fire while it's awake. Render's free plan sleeps after 15 minutes idle, so use a paid instance, or a free uptime pinger hitting the site every ~10 minutes, if you want reliable reminders.
 
 Express serves `client/dist` and sends `index.html` for any non-`/api` path, so the frontend and API share one origin and need no CORS.
 
 In production the session cookie is marked `Secure`, so serve the app over HTTPS.
+
+## Install as an app
+
+Garden Manager is a PWA. Over HTTPS (Render provides it), browsers offer to install it:
+
+- **Android / Chrome / Edge:** the install prompt, or menu → *Install app* / *Add to Home screen*.
+- **iPhone / iPad:** Share → *Add to Home Screen*. iOS only allows push notifications for the installed app (iOS 16.4+).
+
+The service worker (`client/src/sw.js`, built by vite-plugin-pwa) caches the app shell so it opens offline. API data is never cached.
+
+## Notifications
+
+Web push using VAPID. There's no Firebase and no third-party service.
+
+**1. Generate keys once:**
+
+```bash
+npx --prefix server web-push generate-vapid-keys
+```
+
+Put the two keys in `.env` (and in Render's environment) as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and set `VAPID_SUBJECT` to `mailto:you@example.com`. Use the same keys everywhere and never change them: new keys invalidate every existing subscription, and everyone would have to re-enable notifications.
+
+**2. Run `npm run migrate`** to create `push_subscriptions`, `reminder_settings` and `harvest_reminders_sent`.
+
+**3. In the app**, open *Notifications* → *Enable notifications*, then *Send a test*.
+
+What gets sent:
+
+| Notification | When | Setting |
+|---|---|---|
+| Harvest coming up | Daily at 08:00, once per plant whose expected harvest date is within the lead time | *Harvest reminders* + lead days |
+| Time to water | Daily at 08:00, every N days | *Watering reminders* |
+| Garden fund | 09:00 on the 1st of each month | *Monthly savings* |
+| New deposit / expense / harvest | Right away, to everyone **except** the person who added it | *Garden activity* |
+
+Tapping a notification opens the relevant page. Signing out turns notifications off on that device. Subscriptions the push service reports as gone (HTTP 404/410) are deleted automatically.
 
 ## How auth works
 
@@ -159,6 +200,11 @@ All routes are JSON, and all except login/logout require a session.
 | GET/PUT/DELETE | `/api/expenses/:id` | |
 | GET/POST | `/api/harvests` | filters: `?from=&to=&plant_id=&bed_id=` |
 | GET/PUT/DELETE | `/api/harvests/:id` | |
+| GET | `/api/push/public-key` | `{ enabled, publicKey }` |
+| POST | `/api/push/subscribe` | `{ subscription }` (a `PushSubscription.toJSON()`) |
+| POST | `/api/push/unsubscribe` | `{ endpoint }` |
+| POST | `/api/push/test` | sends a test notification to your devices |
+| GET/PUT | `/api/notifications/settings` | `watering_interval_days`, `harvest_lead_days`, `notify_harvest`, `notify_savings_monthly`, `notify_activity` |
 
 `PUT` accepts partial updates. Dates are `YYYY-MM-DD`. Expense categories: `seeds`, `soil`, `tools`, `water`, `fertilizer`, `other`. Plant statuses: `planted`, `growing`, `harvested`, `removed`.
 

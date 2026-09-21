@@ -8,6 +8,7 @@ import Savings from './pages/Savings.jsx';
 import Expenses from './pages/Expenses.jsx';
 import Garden from './pages/Garden.jsx';
 import Harvests from './pages/Harvests.jsx';
+import Notifications from './pages/Notifications.jsx';
 
 function Splash() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="expenses" element={<Expenses />} />
         <Route path="garden" element={<Garden />} />
         <Route path="harvests" element={<Harvests />} />
+        <Route path="notifications" element={<Notifications />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

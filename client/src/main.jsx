@@ -13,6 +13,17 @@ import App from './App.jsx';
 import { AuthProvider } from './lib/auth.jsx';
 import { ToastProvider } from './lib/toast.jsx';
 
+// Service worker (built from src/sw.js): offline app shell + push notifications.
+// Only in production builds, so dev never serves stale cached files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => console.error('Service worker failed:', err));
+  // A new version took over: reload once so the page matches the new assets.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) window.location.reload();
+  });
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
