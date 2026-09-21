@@ -1,0 +1,21 @@
+{
+  "name": "garden-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Garden fund, beds, plants and harvest tracker",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -n server,client -c green,yellow \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm install --prefix server --omit=dev && npm install --prefix client --include=dev && npm run build --prefix client",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "migrate": "node --env-file-if-exists=.env server/scripts/migrate.js",
+    "seed": "npm run seed --prefix server",
+    "add-user": "npm run add-user --prefix server --"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
+}

@@ -1,0 +1,137 @@
+/* ------------------------------------------------------------------
+   Garden Manager design tokens
+   One botanical palette: forest greens, sage, terracotta, ochre, cream.
+   ------------------------------------------------------------------ */
+:root {
+  /* Raw palette */
+  --forest-950: #0f2a1c;
+  --forest-900: #163a27;
+  --forest-800: #1f4a33;
+  --forest-700: #245c3b;
+  --forest-600: #1e7443;
+  --forest-500: #3f8a5a;
+
+  --sage-600: #5f7f5e;
+  --sage-500: #7f9c7e;
+  --sage-400: #9dbb93;
+  --sage-300: #b7cbb0;
+  --sage-200: #d3e0cc;
+  --sage-100: #e6eedf;
+  --sage-50: #f1f5ec;
+
+  --terracotta-700: #9a4b25;
+  --terracotta-600: #b25c31;
+  --terracotta-500: #d07c45;
+  --terracotta-300: #e8b08a;
+  --terracotta-100: #f8e6d8;
+  --terracotta-50: #fcf3ec;
+
+  --ochre-700: #8a6014;
+  --ochre-600: #a6761d;
+  --ochre-400: #d4a94f;
+  --ochre-100: #f6ebcf;
+  --ochre-50: #fbf6e8;
+
+  --cream-50: #fffdf8;
+  --cream-100: #f7f2e8;
+  --cream-200: #efe7d8;
+  --cream-300: #e3d8c4;
+  --cream-400: #cfc1a8;
+
+  --ink-900: #1d2a22;
+  --ink-800: #2a3a30;
+  --ink-700: #3c4b41;
+  --ink-500: #5f6d63;
+  --ink-400: #85908a;
+
+  /* Semantic roles */
+  --bg: var(--cream-100);
+  --surface: var(--cream-50);
+  --surface-sunken: var(--cream-200);
+  --surface-tint: var(--sage-50);
+  --border: #e6dccb;
+  --border-strong: var(--cream-400);
+
+  --text: var(--ink-900);
+  --text-secondary: var(--ink-700);
+  --text-muted: var(--ink-500);
+  --text-faint: var(--ink-400);
+  --text-on-dark: var(--cream-100);
+  --text-on-dark-muted: #b9c9b8;
+
+  --primary: var(--forest-700);
+  --primary-hover: var(--forest-800);
+  --primary-soft: var(--sage-100);
+  --accent: var(--terracotta-500);
+  --accent-strong: var(--terracotta-600);
+  --accent-soft: var(--terracotta-100);
+
+  --positive: var(--forest-600);
+  --negative: var(--terracotta-700);
+  --danger: #a63d2f;
+  --danger-soft: #f7e1dc;
+
+  /* Chart series — validated for colour-vision deficiency and
+     contrast (>= 3:1) against --surface. Don't substitute by eye. */
+  --chart-saved: #1e7443;
+  --chart-spent: #d07c45;
+  --chart-kg: #a6761d;
+  --chart-grid: #ebe2d2;
+  --chart-axis: var(--ink-500);
+
+  /* Typography */
+  --font-serif: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --text-xs: 0.75rem;    /* 12 */
+  --text-sm: 0.8125rem;  /* 13 */
+  --text-base: 0.9375rem;/* 15 */
+  --text-md: 1.0625rem;  /* 17 */
+  --text-lg: 1.25rem;    /* 20 */
+  --text-xl: 1.625rem;   /* 26 */
+  --text-2xl: 2.125rem;  /* 34 */
+  --text-3xl: 2.75rem;   /* 44 */
+  --text-4xl: 3.5rem;    /* 56 */
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-body: 1.6;
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+  --space-10: 72px;
+
+  /* Shape */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* Depth — warm, green-tinted shadows rather than grey */
+  --shadow-xs: 0 1px 2px rgba(37, 52, 30, 0.06);
+  --shadow-sm: 0 1px 2px rgba(37, 52, 30, 0.05), 0 2px 8px -2px rgba(37, 52, 30, 0.08);
+  --shadow-md: 0 2px 4px rgba(37, 52, 30, 0.04), 0 10px 24px -8px rgba(37, 52, 30, 0.14);
+  --shadow-lg: 0 4px 10px rgba(37, 52, 30, 0.05), 0 24px 48px -16px rgba(37, 52, 30, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(63, 138, 90, 0.28);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 140ms;
+  --duration: 220ms;
+
+  /* Layout */
+  --sidebar-width: 264px;
+  --content-max: 1180px;
+  --gutter: clamp(16px, 4vw, 48px);
+}
