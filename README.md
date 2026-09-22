@@ -130,7 +130,7 @@ Create a **Web Service** from the repo with:
 - Build command: `npm run build`
 - Start command: `npm start`
 - Pre-deploy command (paid plans): `npm run migrate`. On the free plan, run it once from your machine against the same `DATABASE_URL`.
-- Environment: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and optionally `REMINDER_TIMEZONE`, `VITE_CURRENCY` and `ALLOWED_ORIGIN`. Render sets `PORT` itself.
+- Environment: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `GEMINI_API_KEY`, and optionally `GEMINI_MODEL`, `REMINDER_TIMEZONE`, `VITE_CURRENCY` and `ALLOWED_ORIGIN`. Render sets `PORT` itself.
 - Reminders run on a timer inside the web service, so they only fire while it's awake. Render's free plan sleeps after 15 minutes idle, so use a paid instance, or a free uptime pinger hitting the site every ~10 minutes, if you want reliable reminders.
 
 Express serves `client/dist` and sends `index.html` for any non-`/api` path, so the frontend and API share one origin and need no CORS.
@@ -190,6 +190,24 @@ How an upload works:
 Only the poster can delete a moment. Posting one notifies everyone else who has *Garden activity* notifications on.
 
 Photo uploads are `multipart/form-data`, which a cross-site form *could* send. So besides the SameSite cookie, the server also requires an `X-Requested-With: fetch` header on them. Browsers only let other sites add a custom header after a CORS preflight, and that preflight fails.
+
+## Planting Assistant
+
+A chat page that answers gardening questions using what's actually in the garden. It runs on **Google Gemini's** free tier and can look at photos too.
+
+1. Get a free API key at https://aistudio.google.com/apikey and set it as `GEMINI_API_KEY`. You can also set `GEMINI_MODEL`, which defaults to `gemini-3.5-flash`.
+2. Run `npm run migrate` to create `assistant_conversations` and `assistant_messages`.
+3. Set `REMINDER_TIMEZONE=Asia/Beirut` so the assistant knows the right date and season.
+
+How it works:
+
+- Every message runs fresh queries for the beds, current plantings, what each bed grew in the last 18 months, and the last 12 months of harvests. That summary is added to the system instruction.
+- The model also gets the last 20 messages of the conversation. Earlier photos are sent as the text `[photo]`, so only the current photo's bytes go to Gemini.
+- Replies stream back to the browser as newline-delimited JSON.
+- Photos are shrunk to 1600 px in the browser before upload. They are sent to Gemini inline and also saved to Cloudinary under `garden-manager/assistant/` so the chat history can show them. Deleting a conversation deletes its photos too.
+- Conversations are private to each user.
+- Each user can send 8 messages a minute, which leaves room within Gemini's free-tier limit of about 15 requests a minute. If Gemini returns 429, the user sees "the assistant is busy" and their message is put back in the box so they can resend it.
+- All model calls are in `server/lib/llm.js`. To switch provider or model, change only that file.
 
 ## How auth works
 

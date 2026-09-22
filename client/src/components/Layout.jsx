@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, CalendarDays, Camera, LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sprout, Trophy, Wheat, X } from 'lucide-react';
+import { Bell, CalendarDays, Camera, LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sparkles, Sprout, Trophy, Wheat, X } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
 import { currentSubscription } from '../lib/push.js';
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/garden', label: 'Beds & Plants', icon: Sprout },
   { to: '/harvests', label: 'Harvests', icon: Wheat },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
+  { to: '/assistant', label: 'Planting Assistant', icon: Sparkles },
   { to: '/moments', label: 'Moments', icon: Camera },
   { to: '/tennis', label: 'Tennis', icon: Trophy },
   { to: '/notifications', label: 'Notifications', icon: Bell },
@@ -89,6 +90,10 @@ export default function Layout() {
   }, [drawerOpen]);
 
   const sidebarVisible = !isMobile || drawerOpen;
+  // Full-bleed pages manage their own height and padding, and keep one
+  // mounted instance across their sub-routes (e.g. switching conversations).
+  const section = location.pathname.startsWith('/assistant') ? '/assistant' : location.pathname;
+  const flush = section === '/assistant';
   const initial = (user?.display_name || user?.email || '?').trim().charAt(0).toUpperCase();
 
   return (
@@ -157,12 +162,13 @@ export default function Layout() {
         </div>
       </motion.aside>
 
-      <main className="app-main">
+      <main className={`app-main ${flush ? 'is-flush' : ''}`}>
         <motion.div
-          key={location.pathname}
+          key={section}
           className="app-content"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
+          // No slide for full-bleed pages: a transform would re-anchor their fixed layout mid-animation.
+          initial={flush ? { opacity: 0 } : { opacity: 0, y: 10 }}
+          animate={flush ? { opacity: 1 } : { opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         >
           <Outlet />

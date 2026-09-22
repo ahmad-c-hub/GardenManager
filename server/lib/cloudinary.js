@@ -14,10 +14,10 @@ if (cloudinaryEnabled) {
     secure: true,
   });
 } else {
-  console.warn('Moments photo uploads are off: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.');
+  console.warn('Photo uploads (Moments, assistant history) are off: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.');
 }
 
-const FOLDER = 'garden-manager/moments';
+const DEFAULT_FOLDER = 'garden-manager/moments';
 
 /**
  * Upload an image buffer. The stored original is capped at 1600px on its long
@@ -25,11 +25,11 @@ const FOLDER = 'garden-manager/moments';
  * (WebP/AVIF where supported), so the feed stays light.
  * Returns { url, publicId }.
  */
-export function uploadImage(buffer) {
+export function uploadImage(buffer, { folder = DEFAULT_FOLDER } = {}) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: FOLDER,
+        folder,
         resource_type: 'image',
         allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
         transformation: [{ width: 1600, height: 1600, crop: 'limit' }],

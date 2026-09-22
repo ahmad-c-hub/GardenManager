@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
             react: ['react', 'react-dom', 'react-router-dom'],
             charts: ['recharts'],
             motion: ['framer-motion'],
+            markdown: ['react-markdown', 'remark-gfm'],
           },
         },
       },

@@ -16,6 +16,7 @@ import { notificationsRouter, pushRouter } from './routes/notifications.js';
 import momentsRouter from './routes/moments.js';
 import workItemsRouter from './routes/workItems.js';
 import tennisRouter from './routes/tennis.js';
+import assistantRouter from './routes/assistant.js';
 import { startReminderJobs } from './jobs/reminders.js';
 import {
   bedsRouter,
@@ -56,9 +57,13 @@ app.use(cookieParser());
 // for any non-JSON body — including an empty form post, which sends Content-Length: 0.
 // Photo uploads must be multipart, which a form *can* send cross-site, so they
 // also need a custom header — and custom headers always force a preflight.
+const PHOTO_UPLOAD_PATHS = [/^\/moments$/, /^\/assistant\/conversations\/\d+\/chat$/];
 app.use('/api', (req, _res, next) => {
   const photoUpload =
-    req.method === 'POST' && req.path === '/moments' && req.is('multipart/form-data') && req.get('X-Requested-With') === 'fetch';
+    req.method === 'POST' &&
+    PHOTO_UPLOAD_PATHS.some((re) => re.test(req.path)) &&
+    req.is('multipart/form-data') &&
+    req.get('X-Requested-With') === 'fetch';
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.is('application/json') === false && !photoUpload) {
     return next(new HttpError(415, 'Requests must be sent as JSON.'));
   }
@@ -82,6 +87,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/moments', momentsRouter);
 app.use('/api/work-items', workItemsRouter);
 app.use('/api/tennis', tennisRouter);
+app.use('/api/assistant', assistantRouter);
 app.use('/api', notFoundHandler);
 
 // In production, serve the built React app. The SPA itself shows only the
