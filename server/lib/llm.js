@@ -4,8 +4,20 @@
 import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from '@google/generative-ai';
 
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-const TIMEOUT_MS = 90_000;
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3.5-flash-lite';
+// Tried in order. Set GEMINI_FALLBACK_MODEL to an empty value to turn the fallback off.
+const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL].filter((m, i, all) => m && all.indexOf(m) === i);
+
+// One deadline covers every attempt, every model and every wait in between.
+const REPLY_DEADLINE_MS = 90_000;
+const TITLE_DEADLINE_MS = 25_000;
+
+// The free tier often answers 503 ("high demand") or 429 for a moment.
+// Each model gets up to MAX_ATTEMPTS tries, waiting roughly this long in between.
+const MAX_ATTEMPTS = 4;
+const BACKOFF_MS = [500, 1500, 3000, 6000];
+const RETRYABLE = new Set([429, 503]);
 
 /** Without a key the rest of the app works; the assistant just says it isn't set up. */
 export const llmEnabled = Boolean(API_KEY);
@@ -17,10 +29,10 @@ const client = llmEnabled ? new GoogleGenerativeAI(API_KEY) : null;
 // maxOutputTokens. Keeping thinking low keeps the first words quick. Gemini 3+
 // takes a level; 2.5 takes a token budget (Flash can switch it off for the
 // throwaway title call). Older models reject the field, so they get neither.
-const GENERATION = Number(MODEL.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
-function thinking(budget) {
-  if (GENERATION >= 3) return { thinkingConfig: { thinkingLevel: 'low' } };
-  if (GENERATION >= 2.5) return { thinkingConfig: { thinkingBudget: /flash/.test(MODEL) ? budget : Math.max(budget, 128) } };
+function thinking(model, budget) {
+  const generation = Number(model.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  if (generation >= 3) return { thinkingConfig: { thinkingLevel: 'low' } };
+  if (generation >= 2.5) return { thinkingConfig: { thinkingBudget: /flash/.test(model) ? budget : Math.max(budget, 128) } };
   return {};
 }
 
@@ -32,20 +44,90 @@ export class LlmError extends Error {
   }
 }
 
+/** HTTP status behind an SDK error, including errors that arrive mid-stream as text. */
+function statusOf(err) {
+  if (err instanceof GoogleGenerativeAIFetchError && err.status) return err.status;
+  const message = err?.message ?? '';
+  const code = /\[(\d{3})[ \]]/.exec(message);
+  if (code) return Number(code[1]);
+  if (/high demand|overloaded|UNAVAILABLE/i.test(message)) return 503;
+  if (/RESOURCE_EXHAUSTED|rate limit/i.test(message)) return 429;
+  return undefined;
+}
+
+const jitter = (ms) => Math.round(ms * (0.75 + Math.random() * 0.5));
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * Run attempt(model, signal) until it succeeds. 503s and 429s are retried with
+ * backoff; a model still overloaded (503) after all its attempts hands the whole
+ * request to the next model. An error marked `committed` (the user has already
+ * seen part of the answer) is never retried, since a retry would repeat it.
+ */
+async function withResilience(label, deadlineMs, attempt) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Deadline exceeded', 'AbortError')), deadlineMs);
+  let lastErr;
+  try {
+    for (const [m, model] of MODELS.entries()) {
+      for (let n = 1; n <= MAX_ATTEMPTS; n += 1) {
+        try {
+          const result = await attempt(model, controller.signal);
+          const note = m > 0 ? ` (fallback, attempt ${n})` : n > 1 ? ` (attempt ${n})` : '';
+          console.log(`[llm] ${label} served by ${model}${note}`);
+          return result;
+        } catch (err) {
+          lastErr = err;
+          const status = statusOf(err);
+          if (err.committed || controller.signal.aborted || !RETRYABLE.has(status)) throw err;
+          if (n === MAX_ATTEMPTS) break;
+          const delay = jitter(BACKOFF_MS[n - 1]);
+          console.warn(`[llm] ${label}: ${model} returned ${status} (attempt ${n}/${MAX_ATTEMPTS}), retrying in ${delay}ms`);
+          await sleep(delay, controller.signal);
+        }
+      }
+      const next = MODELS[m + 1];
+      if (!next || statusOf(lastErr) !== 503) break;
+      console.warn(`[llm] ${label}: ${model} still overloaded after ${MAX_ATTEMPTS} attempts, falling back to ${next}`);
+    }
+    throw lastErr;
+  } catch (err) {
+    if (!(err instanceof LlmError)) console.error(`[llm] ${label} failed: ${err.message}`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function toLlmError(err) {
   if (err instanceof LlmError) return err;
-  const status = err instanceof GoogleGenerativeAIFetchError ? err.status : undefined;
-  if (status === 429 || /\b429\b|quota|rate limit/i.test(err.message ?? '')) {
+  const status = statusOf(err);
+  if (status === 503) {
+    return new LlmError('unavailable', 'The assistant is in high demand right now. Please try again in a minute.');
+  }
+  if (status === 429) {
     return new LlmError('busy', 'The assistant is busy right now. Please try again in a moment.');
   }
   if (err.name === 'AbortError' || /abort/i.test(err.message ?? '')) {
     return new LlmError('unavailable', 'The assistant took too long to answer. Please try again.');
   }
   if (status === 400 && /api key/i.test(err.message ?? '')) {
-    console.error('Gemini rejected the API key:', err.message);
     return new LlmError('unavailable', 'The assistant isn’t configured correctly on the server.');
   }
-  console.error('Gemini request failed:', err.message);
   return new LlmError('unavailable', 'The assistant couldn’t answer just now. Please try again.');
 }
 
@@ -78,76 +160,69 @@ function blockedReason(response) {
 /**
  * Stream a reply. `turns` is [{ role: 'user'|'assistant', text, image?: { buffer, mimeType } }],
  * oldest first, ending with the new user turn. Calls onText(chunk) as text
- * arrives and resolves to the full reply. Throws LlmError.
+ * arrives and resolves to the full reply. Throws LlmError (with `.partial`).
  */
 export async function streamReply({ system, turns, onText }) {
   if (!llmEnabled) throw new LlmError('unavailable', 'The Planting Assistant isn’t set up on this server yet.');
 
-  const model = client.getGenerativeModel({
-    model: MODEL,
-    systemInstruction: system,
-    generationConfig: { temperature: 0.6, maxOutputTokens: 6144, ...thinking(1024) },
-  });
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
+  const contents = toContents(turns);
   let full = '';
   try {
-    const result = await model.generateContentStream({ contents: toContents(turns) }, { signal: controller.signal });
-    for await (const chunk of result.stream) {
-      let text = '';
+    return await withResilience('reply', REPLY_DEADLINE_MS, async (modelName, signal) => {
+      const model = client.getGenerativeModel({
+        model: modelName,
+        systemInstruction: system,
+        generationConfig: { temperature: 0.6, maxOutputTokens: 6144, ...thinking(modelName, 1024) },
+      });
       try {
-        text = chunk.text();
-      } catch {
-        // A chunk with no text part (e.g. a safety stop); checked below.
+        const result = await model.generateContentStream({ contents }, { signal });
+        for await (const chunk of result.stream) {
+          let text = '';
+          try {
+            text = chunk.text();
+          } catch {
+            // A chunk with no text part (e.g. a safety stop); checked below.
+          }
+          if (text) {
+            full += text;
+            onText(text);
+          }
+        }
+        if (!full) {
+          const response = await result.response.catch(() => null);
+          if (blockedReason(response)) {
+            throw new LlmError('blocked', 'I can’t help with that one. Try asking about your garden in a different way.');
+          }
+          throw new LlmError('unavailable', 'The assistant came back empty-handed. Please try again.');
+        }
+        return full;
+      } catch (err) {
+        if (full) err.committed = true;
+        throw err;
       }
-      if (text) {
-        full += text;
-        onText(text);
-      }
-    }
-    if (!full) {
-      const response = await result.response.catch(() => null);
-      if (blockedReason(response)) {
-        throw new LlmError('blocked', 'I can’t help with that one. Try asking about your garden in a different way.');
-      }
-      throw new LlmError('unavailable', 'The assistant came back empty-handed. Please try again.');
-    }
-    return full;
+    });
   } catch (err) {
     const llmErr = toLlmError(err);
     llmErr.partial = full;
     throw llmErr;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
 /** A 3–5 word title for a conversation, or null if the model can't be reached. */
 export async function generateTitle(firstMessage) {
   if (!llmEnabled) return null;
-  const model = client.getGenerativeModel({
-    model: MODEL,
-    generationConfig: { temperature: 0.3, maxOutputTokens: 512, ...thinking(0) },
-  });
+  const prompt =
+    'Write a 3 to 5 word title for a gardening chat that opens with the message below. ' +
+    'Title case, no quotes, no trailing punctuation. Reply with the title only.\n\n' +
+    firstMessage.slice(0, 600);
   try {
-    const result = await model.generateContent(
-      {
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text:
-                  'Write a 3 to 5 word title for a gardening chat that opens with the message below. ' +
-                  'Title case, no quotes, no trailing punctuation. Reply with the title only.\n\n' +
-                  firstMessage.slice(0, 600),
-              },
-            ],
-          },
-        ],
-      },
-      { timeout: 15_000 },
+    const result = await withResilience('title', TITLE_DEADLINE_MS, (modelName, signal) =>
+      client
+        .getGenerativeModel({
+          model: modelName,
+          generationConfig: { temperature: 0.3, maxOutputTokens: 512, ...thinking(modelName, 0) },
+        })
+        .generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }, { signal }),
     );
     const title = result.response
       .text()

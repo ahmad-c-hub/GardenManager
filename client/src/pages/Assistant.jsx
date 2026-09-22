@@ -720,6 +720,8 @@ export default function Assistant() {
             setMessages((m) => m.map((x) => (x.id === replyTemp.id ? { ...event.message, fresh: true } : x)));
           }
           upsertConversation(convId, { updated_at: event.message.created_at });
+          // The stream stays open a little longer for the title; don't hold the composer for it.
+          setBusy(false);
         } else if (event.type === 'title') {
           setConversations((list) => list?.map((c) => (c.id === convId ? { ...c, title: event.title } : c)));
         } else if (event.type === 'error') {
