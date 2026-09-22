@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, CalendarDays, Camera, LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sprout, Wheat, X } from 'lucide-react';
+import { Bell, CalendarDays, Camera, LayoutDashboard, LogOut, Menu, PiggyBank, Receipt, Sprout, Trophy, Wheat, X } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
 import { currentSubscription } from '../lib/push.js';
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/harvests', label: 'Harvests', icon: Wheat },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/moments', label: 'Moments', icon: Camera },
+  { to: '/tennis', label: 'Tennis', icon: Trophy },
   { to: '/notifications', label: 'Notifications', icon: Bell },
 ];
 
