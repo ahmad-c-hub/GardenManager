@@ -15,7 +15,14 @@ import dashboardRouter from './routes/dashboard.js';
 import { notificationsRouter, pushRouter } from './routes/notifications.js';
 import momentsRouter from './routes/moments.js';
 import { startReminderJobs } from './jobs/reminders.js';
-import { bedsRouter, expensesRouter, harvestsRouter, plantsRouter, savingsRouter } from './routes/resources.js';
+import {
+  bedsRouter,
+  expensesRouter,
+  harvestReportsRouter,
+  harvestsRouter,
+  plantsRouter,
+  savingsRouter,
+} from './routes/resources.js';
 
 getJwtSecret(); // Fail fast at startup if the secret is missing or weak.
 
@@ -66,6 +73,7 @@ app.use('/api/beds', bedsRouter);
 app.use('/api/plants', plantsRouter);
 app.use('/api/savings', savingsRouter);
 app.use('/api/expenses', expensesRouter);
+app.use('/api/harvests', harvestReportsRouter); // /crops, /summary — before /:id
 app.use('/api/harvests', harvestsRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/notifications', notificationsRouter);

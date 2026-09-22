@@ -1,3 +1,5 @@
+import { Router } from 'express';
+import { query } from '../db.js';
 import { badRequest } from '../lib/errors.js';
 import { crudRouter } from '../lib/crud.js';
 import { notifyActivity } from '../lib/push.js';
@@ -156,4 +158,50 @@ export const harvestsRouter = crudRouter({
       url: '/harvests',
     });
   },
+});
+
+/**
+ * Per-crop reporting. Mounted on /api/harvests ahead of harvestsRouter so
+ * /crops and /summary aren't taken for a harvest id.
+ */
+export const harvestReportsRouter = Router();
+
+harvestReportsRouter.get('/crops', async (_req, res) => {
+  const { rows } = await query('SELECT DISTINCT crop_name FROM harvests ORDER BY crop_name ASC');
+  res.json(rows.map((r) => r.crop_name));
+});
+
+// ?crop=Tomatoes&from=YYYY-MM-DD&to=YYYY-MM-DD (from/to optional = all time)
+harvestReportsRouter.get('/summary', async (req, res) => {
+  const crop = typeof req.query.crop === 'string' ? req.query.crop.trim() : '';
+  if (!crop) throw badRequest('crop is required.');
+  if (crop.length > 120) throw badRequest('crop must be at most 120 characters.');
+
+  const from = parseQueryDate(req.query.from, 'from') ?? null;
+  const to = parseQueryDate(req.query.to, 'to') ?? null;
+  if (from && to && from > to) throw badRequest('from must be on or before to.');
+
+  const params = [crop];
+  const clauses = ['h.crop_name = $1'];
+  if (from) clauses.push(`h.harvested_on >= $${params.push(from)}`);
+  if (to) clauses.push(`h.harvested_on <= $${params.push(to)}`);
+  const where = clauses.join(' AND ');
+  const [entries, totals] = await Promise.all([
+    query(
+      `SELECT h.id, h.quantity_kg, h.harvested_on, h.notes
+       FROM harvests h WHERE ${where}
+       ORDER BY h.harvested_on DESC, h.id DESC`,
+      params,
+    ),
+    query(`SELECT COALESCE(SUM(h.quantity_kg), 0) AS total_kg FROM harvests h WHERE ${where}`, params),
+  ]);
+
+  res.json({
+    crop,
+    from,
+    to,
+    total_kg: totals.rows[0].total_kg,
+    count: entries.rows.length,
+    entries: entries.rows,
+  });
 });

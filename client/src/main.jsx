@@ -24,6 +24,10 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   });
 }
 
+// iOS Safari ignores user-scalable=no in a browser tab; its proprietary gesture
+// events drive pinch-zoom, so cancel them. Scrolling is unaffected.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>

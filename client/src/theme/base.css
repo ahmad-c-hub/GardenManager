@@ -7,9 +7,28 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Feel like a native app: scrolling in any direction still works, but
+     pinch-zoom and double-tap zoom are off (descendants can't re-enable them). */
+  touch-action: pan-x pan-y;
+}
+
+a,
+button,
+input,
+select,
+textarea,
+label,
+summary,
+[role='button'] {
+  /* No double-tap-to-zoom delay on taps. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
+  /* Nothing should ever scroll the page sideways on a phone. `clip` rather
+     than `hidden` so the sticky topbar and columns keep working. */
+  overflow-x: clip;
   margin: 0;
   min-height: 100dvh;
   background-color: var(--bg);
