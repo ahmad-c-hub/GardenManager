@@ -10,6 +10,7 @@ import Garden from './pages/Garden.jsx';
 import Harvests from './pages/Harvests.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Moments from './pages/Moments.jsx';
+import Calendar from './pages/Calendar.jsx';
 
 function Splash() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="expenses" element={<Expenses />} />
         <Route path="garden" element={<Garden />} />
         <Route path="harvests" element={<Harvests />} />
+        <Route path="calendar" element={<Calendar />} />
         <Route path="moments" element={<Moments />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="*" element={<Navigate to="/" replace />} />

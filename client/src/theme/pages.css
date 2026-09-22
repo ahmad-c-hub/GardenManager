@@ -1505,3 +1505,577 @@
   from { transform: translateX(-100%); }
   to { transform: translateX(260%); }
 }
+
+/* ---------- Calendar ---------- */
+.cal-seg-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (min-width: 1600px) {
+  .cal-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .cal-daypanel {
+    position: sticky;
+    top: var(--space-6);
+  }
+}
+
+.cal-card {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(var(--space-4), 3vw, var(--space-7));
+}
+.cal-card .cal-grid {
+  transition: opacity var(--duration) var(--ease-out);
+}
+.cal-card.is-loading .cal-grid {
+  opacity: 0.6;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.cal-title {
+  min-width: 0;
+  color: var(--forest-900);
+  white-space: nowrap;
+  font-size: clamp(1.5rem, 1.2rem + 1.2vw, var(--text-2xl));
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+.cal-title em {
+  color: var(--sage-500);
+  font-style: italic;
+  font-weight: 300;
+}
+@media (max-width: 420px) {
+  .cal-title {
+    font-size: 1.3rem;
+  }
+  .cal-nav .btn {
+    padding: 0 var(--space-3);
+  }
+}
+.cal-nav {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The grid measures itself: narrow = compact phone treatment. */
+.cal-grid-wrap {
+  container-type: inline-size;
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  padding-bottom: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.cal-weekdays span {
+  padding-left: 12px;
+}
+.cal-grid {
+  display: flex;
+  flex-direction: column;
+}
+.cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+.cal-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 6px 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease-out),
+    box-shadow var(--duration) var(--ease-out);
+}
+/* Weekends get the faintest wash of sage. */
+.cal-week > .cal-day:nth-child(n + 6) {
+  background: rgba(230, 238, 223, 0.2);
+}
+.cal-day:hover {
+  background: var(--surface-tint);
+}
+.cal-day.is-today {
+  background: var(--sage-50);
+}
+.cal-day.is-selected {
+  background: var(--surface-tint);
+  box-shadow: inset 0 0 0 1.5px var(--sage-400);
+}
+.cal-date {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-variant-numeric: lining-nums;
+  transition: background-color var(--duration) var(--ease-out), color var(--duration) var(--ease-out);
+}
+.cal-day.is-outside .cal-date {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+.cal-day.is-outside .cal-pills {
+  opacity: 0.5;
+}
+.cal-day.is-today .cal-date {
+  background: var(--forest-700);
+  color: var(--cream-50);
+  box-shadow: 0 6px 12px -6px rgba(36, 92, 59, 0.7);
+}
+.cal-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cal-pill {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 0;
+  border-left: 2px solid var(--forest-500);
+  border-radius: 4px 7px 7px 4px;
+  background: var(--sage-100);
+  color: var(--forest-800);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color var(--duration) var(--ease-out);
+}
+.cal-pill:hover {
+  background: var(--sage-200);
+}
+.cal-pill-time {
+  margin-right: 4px;
+  color: var(--sage-600);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.cal-pill.is-done {
+  border-left-color: var(--cream-400);
+  background: var(--cream-200);
+  color: var(--ink-400);
+  text-decoration: line-through;
+}
+.cal-pill.is-done .cal-pill-time {
+  color: inherit;
+}
+.cal-pill.is-overdue {
+  border-left-color: var(--terracotta-500);
+  background: var(--terracotta-100);
+  color: var(--terracotta-700);
+}
+.cal-pill.is-overdue .cal-pill-time {
+  color: var(--terracotta-600);
+}
+.cal-more {
+  padding-left: 8px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.cal-dots {
+  display: none;
+}
+
+@container (max-width: 640px) {
+  .cal-weekdays {
+    text-align: center;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+  }
+  .cal-weekdays span {
+    padding-left: 0;
+  }
+  .cal-week {
+    gap: 2px;
+    padding: 2px 0;
+  }
+  .cal-day {
+    align-items: center;
+    gap: 3px;
+    min-height: 54px;
+    padding: 5px 0 6px;
+    border-radius: var(--radius-sm);
+  }
+  .cal-date {
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+  }
+  .cal-pills,
+  .cal-more {
+    display: none;
+  }
+  .cal-dots {
+    display: flex;
+    gap: 3px;
+    height: 5px;
+  }
+  .cal-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--forest-500);
+  }
+  .cal-dot.is-done {
+    background: var(--cream-400);
+  }
+  .cal-dot.is-overdue {
+    background: var(--terracotta-500);
+  }
+}
+
+/* Selected day */
+.cal-daypanel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.cal-daypanel-eyebrow {
+  color: var(--sage-600);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cal-daypanel-head h3 {
+  margin-top: 2px;
+  color: var(--forest-900);
+  font-size: var(--text-lg);
+  font-weight: 400;
+}
+.cal-daypanel-empty,
+.agenda-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) 0 var(--space-3);
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-size: var(--text-md);
+  font-style: italic;
+  text-align: center;
+}
+.cal-sprig {
+  width: 32px;
+  height: 17px;
+  color: var(--sage-400);
+}
+
+/* Work item cards (agenda + day panel) */
+.work-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.work-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration) var(--ease-out),
+    box-shadow var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+}
+.work-card:hover {
+  border-color: var(--sage-200);
+  box-shadow: var(--shadow-sm);
+}
+.work-card.is-overdue {
+  border-color: var(--terracotta-100);
+  background: linear-gradient(90deg, rgba(248, 230, 216, 0.55), var(--surface) 45%);
+  box-shadow: inset 3px 0 0 var(--terracotta-300), var(--shadow-xs);
+}
+.work-card.is-done {
+  background: var(--cream-100);
+  box-shadow: none;
+}
+.work-card.is-done .work-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--cream-400);
+}
+.work-card.is-done .work-time {
+  opacity: 0.55;
+}
+
+.work-check {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--sage-400);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--cream-50);
+  transition:
+    background-color var(--duration) var(--ease-out),
+    border-color var(--duration) var(--ease-out);
+}
+/* A comfortable 44px tap target around the small circle. */
+.work-check::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+.work-check:hover {
+  border-color: var(--forest-500);
+  background: var(--sage-50);
+}
+.work-check.is-checked {
+  border-color: var(--forest-600);
+  background: var(--forest-600);
+}
+.work-check-tick {
+  display: grid;
+  place-items: center;
+}
+.work-check-tick svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3;
+}
+.work-card-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.work-time {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  width: 52px;
+  color: var(--forest-800);
+  font-family: var(--font-serif);
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.work-time small {
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.work-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border);
+}
+.work-title {
+  color: var(--text);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}
+.work-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.work-meta:empty {
+  display: none;
+}
+.work-overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--terracotta-700);
+  font-weight: 600;
+}
+.work-overdue svg {
+  width: 13px;
+  height: 13px;
+}
+.work-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ochre-50);
+  box-shadow: inset 0 0 0 1px var(--ochre-100);
+  color: var(--ochre-700);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.work-badge svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* Agenda */
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(var(--space-6), 4vw, var(--space-8));
+  max-width: 820px;
+}
+.agenda-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.agenda-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--forest-900);
+  font-size: var(--text-lg);
+  font-style: italic;
+  font-weight: 400;
+}
+.agenda-head span {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.agenda-day.is-today .agenda-head h3::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--forest-500);
+  box-shadow: 0 0 0 4px var(--sage-100);
+}
+.agenda-day.is-overdue .agenda-head {
+  border-bottom-color: var(--terracotta-100);
+}
+.agenda-day.is-overdue .agenda-head h3 {
+  color: var(--terracotta-700);
+}
+.agenda-day.is-overdue .agenda-head h3 svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Item modal */
+.work-occurrence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: calc(var(--space-2) * -1) 0 var(--space-5);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--sage-50);
+  box-shadow: inset 0 0 0 1px var(--sage-100);
+}
+.work-occurrence.is-done {
+  background: var(--cream-100);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.work-occurrence-when {
+  color: var(--text);
+  font-weight: 600;
+}
+.work-occurrence-sub {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.work-repeat {
+  display: flex;
+}
+.work-repeat button {
+  flex: 1;
+  min-height: 38px;
+}
+.work-actions {
+  flex-wrap: wrap;
+}
+.work-delete {
+  --btn-fg: var(--danger);
+  margin-right: auto;
+}
+.work-delete:hover:not(:disabled) {
+  --btn-bg: var(--danger-soft);
+}
+.agenda-end {
+  margin-top: calc(var(--space-4) * -1);
+}
+.agenda-end .btn {
+  margin-top: var(--space-2);
+  font-family: var(--font-sans);
+  font-style: normal;
+}

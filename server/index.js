@@ -14,6 +14,7 @@ import authRouter from './routes/auth.js';
 import dashboardRouter from './routes/dashboard.js';
 import { notificationsRouter, pushRouter } from './routes/notifications.js';
 import momentsRouter from './routes/moments.js';
+import workItemsRouter from './routes/workItems.js';
 import { startReminderJobs } from './jobs/reminders.js';
 import {
   bedsRouter,
@@ -78,6 +79,7 @@ app.use('/api/harvests', harvestsRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/moments', momentsRouter);
+app.use('/api/work-items', workItemsRouter);
 app.use('/api', notFoundHandler);
 
 // In production, serve the built React app. The SPA itself shows only the

@@ -95,6 +95,18 @@ const expensePlan = [
   [0, 'seeds', [10, 18], 'Garlic bulbs'],
 ];
 
+// [title, description, days from today, hour, recurrence, bed key, plant name]
+const workPlan = [
+  ['Water the greenhouse seedlings', 'Bottom-water the trays; keep the lid cracked.', -6, 8, 'weekly', 'greenhouse', 'Lettuce'],
+  ['Pinch out tomato side shoots', null, -1, 18, 'none', 'tomato', 'Tomato'],
+  ['Prune tomatoes', 'Take off the lower leaves touching the soil.', 0, 17, 'none', 'tomato', 'Tomato'],
+  ['Feed the berry patch', 'Comfrey tea, one can per row.', 1, 9, 'monthly', 'berries', 'Strawberry'],
+  ['Thin the carrots', null, 3, 10, 'none', 'roots', 'Carrot'],
+  ['Add compost to the Root Row', 'Two barrows from the back heap.', 6, 11, 'none', 'roots', null],
+  ['Harvest basil before it bolts', null, 5, 8, 'none', 'tomato', 'Basil'],
+  ['Turn the compost heap', null, 2, 16, 'weekly', null, null],
+];
+
 async function main() {
   const { rows } = await pool.query(`
     SELECT (SELECT COUNT(*) FROM beds) + (SELECT COUNT(*) FROM plants) + (SELECT COUNT(*) FROM savings)
@@ -109,7 +121,12 @@ async function main() {
 
   await withTransaction(async (client) => {
     if (args.force) {
-      await client.query('TRUNCATE harvests, expenses, savings, plants, beds RESTART IDENTITY');
+      // Postgres won't truncate a table that another table references unless that
+      // one goes too: work items and reminder bookkeeping point at beds and plants.
+      await client.query(
+        `TRUNCATE work_item_reminders_sent, work_item_completions, work_items, harvest_reminders_sent,
+                  harvests, expenses, savings, plants, beds RESTART IDENTITY`,
+      );
     }
 
     const bedIds = {};
@@ -166,8 +183,20 @@ async function main() {
       }
     }
 
+    // Shared garden tasks around today, some recurring. Owned by the first user, if any.
+    const { rows: [owner] } = await client.query('SELECT MIN(id) AS id FROM users');
+    for (const [title, description, days, hour, recurrence, bedKey, plantName] of workPlan) {
+      const at = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days, hour);
+      await client.query(
+        `INSERT INTO work_items (title, description, scheduled_at, recurrence, bed_id, plant_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [title, description, at.toISOString(), recurrence, bedKey ? bedIds[bedKey] : null,
+          plantName ? plantIds[plantName] ?? null : null, owner.id],
+      );
+    }
+
     console.log(`✓ Seeded ${beds.length} beds, ${plants.length} plants, ${savingsCount} deposits, `
-      + `${expensePlan.length} expenses and ${harvestCount} harvests.`);
+      + `${expensePlan.length} expenses, ${harvestCount} harvests and ${workPlan.length} work items.`);
   });
 }
 

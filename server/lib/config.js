@@ -18,3 +18,6 @@ export function getJwtSecret() {
   }
   return secret;
 }
+
+/** IANA timezone the garden lives in: reminder times and recurring work items use it. */
+export const GARDEN_TIMEZONE = process.env.REMINDER_TIMEZONE || 'UTC';

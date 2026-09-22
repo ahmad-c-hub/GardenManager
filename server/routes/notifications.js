@@ -72,6 +72,7 @@ const settingsSchema = {
   notify_harvest: { type: 'boolean', required: true },
   notify_savings_monthly: { type: 'boolean', required: true },
   notify_activity: { type: 'boolean', required: true },
+  notify_calendar: { type: 'boolean', required: true },
 };
 const SETTINGS_COLUMNS = Object.keys(settingsSchema);
 
@@ -82,6 +83,7 @@ const DEFAULT_SETTINGS = {
   notify_harvest: true,
   notify_savings_monthly: true,
   notify_activity: true,
+  notify_calendar: true,
 };
 
 async function loadSettings(userId) {

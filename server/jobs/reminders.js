@@ -1,13 +1,15 @@
 import cron from 'node-cron';
 import { query } from '../db.js';
+import { GARDEN_TIMEZONE } from '../lib/config.js';
 import { pushEnabled, sendPushToUser } from '../lib/push.js';
+import { findOccurrences } from '../lib/workItems.js';
 
 // Reminders fire at 08:00 (daily) and 09:00 on the 1st (monthly) in this zone.
-export const REMINDER_TIMEZONE = process.env.REMINDER_TIMEZONE || 'UTC';
+export const REMINDER_TIMEZONE = GARDEN_TIMEZONE;
 
 /** Today's date as YYYY-MM-DD in the reminder timezone. */
-function todayInZone() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: REMINDER_TIMEZONE }).format(new Date());
+function todayInZone(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: REMINDER_TIMEZONE }).format(now);
 }
 
 // Only users with at least one subscribed device; settings fall back to the defaults.
@@ -112,6 +114,79 @@ export async function runMonthlySavingsReminder() {
   );
 }
 
+/* ---------- Calendar work items ---------- */
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+// Day-before reminders wait for waking hours; the last run before quiet time sends any still pending.
+const WAKING_START = 7;
+const WAKING_END = 21;
+
+const hourFmt = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: REMINDER_TIMEZONE });
+const timeFmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: REMINDER_TIMEZONE });
+
+function addDays(isoDate, n) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Which reminder (if any) an occurrence is due for at `now`. */
+function dueKind(occ, now, hour, today, tomorrow) {
+  const at = occ.occurs_at.getTime();
+  const t = now.getTime();
+  if (occ.occurrence_date === tomorrow) {
+    const awake = hour >= WAKING_START && hour < WAKING_END;
+    return awake && (t >= at - DAY || hour === WAKING_END - 1) ? 'day_before' : null;
+  }
+  if (occ.occurrence_date === today) {
+    // In the morning, or an hour ahead for early tasks — and not long after it has passed.
+    const inTime = hour >= WAKING_START || t >= at - HOUR;
+    return inTime && t <= at + 2 * HOUR ? 'day_of' : null;
+  }
+  return null;
+}
+
+/**
+ * Day-before and day-of pushes for every open occurrence. Work items are
+ * shared, so everyone subscribed hears about them (unless they turned
+ * calendar reminders off). Each reminder is claimed in
+ * work_item_reminders_sent *before* sending, so overlapping runs or a
+ * restart can never send it twice.
+ */
+export async function runWorkItemReminders(now = new Date()) {
+  const today = todayInZone(now);
+  const tomorrow = addDays(today, 1);
+  const hour = Number(hourFmt.format(now));
+
+  const occurrences = await findOccurrences(today, tomorrow);
+  const due = occurrences
+    .filter((occ) => !occ.completed)
+    .map((occ) => [occ, dueKind(occ, now, hour, today, tomorrow)])
+    .filter(([, kind]) => kind);
+  if (due.length === 0) return;
+
+  const { rows: users } = await query(`${SUBSCRIBED_USERS} AND COALESCE(rs.notify_calendar, true)`);
+  for (const [occ, kind] of due) {
+    const { rowCount } = await query(
+      `INSERT INTO work_item_reminders_sent (work_item_id, occurrence_date, kind) VALUES ($1, $2, $3)
+       ON CONFLICT (work_item_id, occurrence_date, kind) DO NOTHING`,
+      [occ.id, occ.occurrence_date, kind],
+    );
+    if (rowCount === 0) continue;
+
+    const title = `🌱 ${kind === 'day_before' ? 'Tomorrow' : 'Today'}: ${occ.title}`;
+    const body = [timeFmt.format(occ.occurs_at), occ.bed_name, occ.plant_name].filter(Boolean).join(' · ');
+    await Promise.all(
+      users.map((user) =>
+        // Same tag per occurrence: the day-of reminder replaces yesterday's.
+        sendPushToUser(user.id, title, body, { url: `/calendar?date=${occ.occurrence_date}`, tag: `work-${occ.id}-${occ.occurrence_date}` })
+          .catch((err) => console.error(`Work item reminder for user #${user.id} failed:`, err.message)),
+      ),
+    );
+  }
+}
+
 export function startReminderJobs() {
   if (!pushEnabled) return;
   const options = { timezone: REMINDER_TIMEZONE, noOverlap: true };
@@ -119,5 +194,6 @@ export function startReminderJobs() {
 
   cron.schedule('0 8 * * *', guard('Daily reminders', runDailyReminders), { ...options, name: 'daily-reminders' });
   cron.schedule('0 9 1 * *', guard('Monthly savings', runMonthlySavingsReminder), { ...options, name: 'monthly-savings' });
+  cron.schedule('0 * * * *', guard('Work item reminders', () => runWorkItemReminders()), { ...options, name: 'work-item-reminders' });
   console.log(`⏰ Reminder jobs scheduled (${REMINDER_TIMEZONE})`);
 }

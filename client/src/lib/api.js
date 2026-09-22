@@ -52,6 +52,7 @@ export const api = {
   get: (path, params) => request('GET', path + toQuery(params)),
   post: (path, body = {}) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
+  patch: (path, body) => request('PATCH', path, body),
   del: (path) => request('DELETE', path),
   upload: (path, formData) => request('POST', path, formData),
 };

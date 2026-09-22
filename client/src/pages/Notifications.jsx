@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellOff, BellRing, Droplets, PiggyBank, Send, Users, Wheat } from 'lucide-react';
+import { Bell, BellOff, BellRing, CalendarDays, Droplets, PiggyBank, Send, Users, Wheat } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useToast } from '../lib/toast.jsx';
 import { currentSubscription, disablePush, enablePush, isIOS, isStandalone, pushSupported } from '../lib/push.js';
@@ -205,6 +205,9 @@ export default function Notifications() {
                     <option key={d} value={d}>Every {d} days</option>
                   ))}
                 </select>
+              </PrefRow>
+              <PrefRow icon={CalendarDays} tone="tone-kg" title="Calendar reminders" description="The day before and the morning of every scheduled garden task.">
+                <Switch label="Calendar reminders" checked={settings.notify_calendar} disabled={saving} onChange={(v) => save({ notify_calendar: v })} />
               </PrefRow>
               <PrefRow icon={PiggyBank} tone="tone-saved" title="Monthly savings" description="On the 1st, a reminder to add this month’s deposit.">
                 <Switch label="Monthly savings reminder" checked={settings.notify_savings_monthly} disabled={saving} onChange={(v) => save({ notify_savings_monthly: v })} />

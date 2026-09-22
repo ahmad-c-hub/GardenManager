@@ -1,6 +1,7 @@
 import { badRequest } from './errors.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 
 export function isValidDate(value) {
   if (typeof value !== 'string' || !DATE_RE.test(value)) return false;
@@ -49,6 +50,14 @@ const checkers = {
   date(value) {
     if (!isValidDate(value)) return 'must be a date (YYYY-MM-DD)';
     return { value };
+  },
+  // An instant with an explicit offset, so there's no guessing whose "9:00" it is.
+  datetime(value) {
+    if (typeof value !== 'string' || !DATETIME_RE.test(value)) return 'must be a date and time with a timezone (ISO 8601)';
+    const date = new Date(value);
+    const year = date.getUTCFullYear();
+    if (Number.isNaN(date.getTime()) || year < 2000 || year > 2100) return 'must be a real date and time';
+    return { value: date.toISOString() };
   },
   enum(value, rule) {
     if (!rule.values.includes(value)) return `must be one of: ${rule.values.join(', ')}`;
