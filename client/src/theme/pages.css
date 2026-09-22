@@ -3044,3 +3044,32 @@
     padding: var(--space-3) var(--space-1);
   }
 }
+.tn-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--terracotta-100);
+  color: var(--terracotta-700);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-style: normal;
+  font-weight: 700;
+}
+.tn-live-sets {
+  display: flex;
+  gap: 2px;
+  color: var(--text-faint);
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.tn-live-sets span {
+  width: 1.5em;
+  text-align: center;
+}
+.tn-live-sets .is-won {
+  color: var(--forest-700);
+  font-weight: 600;
+}

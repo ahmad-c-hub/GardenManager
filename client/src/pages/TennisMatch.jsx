@@ -88,8 +88,17 @@ function RoundsStrip({ match }) {
   );
 }
 
-export default function TennisMatch() {
+/**
+ * One live scoreboard per match. Keyed by id, so moving between matches (a
+ * rematch, a notification) starts a fresh board: nothing — queued taps,
+ * in-flight responses, timers — can carry over from another match.
+ */
+export default function TennisMatchPage() {
   const { matchId } = useParams();
+  return <TennisMatch key={matchId} matchId={matchId} />;
+}
+
+function TennisMatch({ matchId }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { data: players } = useCollection('/tennis/players');
@@ -120,9 +129,6 @@ export default function TennisMatch() {
   }, [matchId, show]);
 
   useEffect(() => {
-    setMatch(null);
-    setCelebrate(false);
-    setBanner(null);
     load();
   }, [load]);
 

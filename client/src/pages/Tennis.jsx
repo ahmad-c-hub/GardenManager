@@ -89,21 +89,35 @@ function LiveMatches({ matches, players }) {
   if (!matches?.length) return null;
   return (
     <section className="tn-section">
-      <h2 className="tn-heading"><span className="tn-live-dot" aria-hidden="true" /> In play</h2>
+      <h2 className="tn-heading">
+        <span className="tn-live-dot" aria-hidden="true" /> In play
+        <span className="tn-count">{matches.length}</span>
+      </h2>
       <div className="tn-live-grid">
         {matches.map((m) => {
           const round = m.rounds.find((r) => r.status === 'in_progress');
+          const finished = m.rounds.filter((r) => r.status === 'completed');
           return (
-            <button key={m.id} type="button" className="card tn-live-card" onClick={() => navigate(`/tennis/matches/${m.id}`)}>
+            <button
+              key={m.id}
+              type="button"
+              className="card tn-live-card"
+              onClick={() => navigate(`/tennis/matches/${m.id}`)}
+              aria-label={`Resume ${m.player1_name} versus ${m.player2_name}, round ${m.current_round}, ${round?.player1_points ?? 0}–${round?.player2_points ?? 0}`}
+            >
               {[1, 2].map((side) => {
                 const player = { id: m[`player${side}_id`], name: m[`player${side}_name`] };
-                const won = side === 1 ? m.rounds_won.player1 : m.rounds_won.player2;
                 return (
                   <span key={side} className="tn-live-row">
                     <Avatar player={player} players={players} size="sm" />
                     <span className="tn-live-name">{shortName(player.name)}</span>
-                    <span className="tn-pips" aria-label={`${won} rounds won`}>
-                      {[0, 1].map((i) => <span key={i} className={`tn-pip ${i < won ? 'is-on' : ''}`} />)}
+                    {/* Finished rounds, small; the round being played, large. */}
+                    <span className="tn-live-sets">
+                      {finished.map((r) => (
+                        <span key={r.round_number} className={r.winner_id === player.id ? 'is-won' : ''}>
+                          {r[`player${side}_points`]}
+                        </span>
+                      ))}
                     </span>
                     <span className="tn-live-score">{round ? round[`player${side}_points`] : '–'}</span>
                   </span>
