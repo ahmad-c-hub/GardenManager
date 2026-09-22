@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 /* Hand-built botanical SVG pieces. Fronds are generated along a curved stem so
@@ -179,6 +180,59 @@ export function PotArt({ className = 'empty-art' }) {
       <path d="M70 62V36" stroke="#3f8a5a" strokeWidth="3" strokeLinecap="round" />
       <path d="M70 44c-12 0-20-8-20-20 12 0 20 8 20 20Z" fill="#9dbb93" />
       <path d="M70 38c0-13 8-22 22-22 0 13-8 22-22 22Z" fill="#3f8a5a" />
+    </svg>
+  );
+}
+
+/** A small leafy sprig in currentColor — a quiet divider for section headers. */
+export function Sprig({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 34 18" aria-hidden="true">
+      <path d="M2 13 Q17 11 32 4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path d={leafPath(9, 4)} fill="currentColor" transform="translate(9 11.6) rotate(-58)" />
+      <path d={leafPath(8, 3.6)} fill="currentColor" opacity="0.75" transform="translate(14 11) rotate(34)" />
+      <path d={leafPath(8, 3.6)} fill="currentColor" transform="translate(20 9.2) rotate(-64)" />
+      <path d={leafPath(7, 3.2)} fill="currentColor" opacity="0.75" transform="translate(25 7.4) rotate(26)" />
+      <path d={leafPath(7, 3.4)} fill="currentColor" transform="translate(31 4.4) rotate(-24)" />
+    </svg>
+  );
+}
+
+/** Empty-state scene for the journal: fronds growing in an arched window, a pinned snapshot. */
+export function JournalArt({ className = 'journal-art' }) {
+  const clip = useId();
+  return (
+    <svg className={className} viewBox="0 0 320 240" aria-hidden="true">
+      <defs>
+        <clipPath id={clip}>
+          <path d="M104 206V112a56 56 0 0 1 112 0v94Z" />
+        </clipPath>
+      </defs>
+      <ellipse cx="160" cy="214" rx="120" ry="9" fill="#e3d8c4" opacity="0.7" />
+
+      {/* Arched window with the morning light and fronds inside */}
+      <path d="M104 206V112a56 56 0 0 1 112 0v94Z" fill="#f1f5ec" />
+      <g clipPath={`url(#${clip})`}>
+        <circle cx="186" cy="98" r="30" fill="#f6ebcf" />
+        <circle cx="186" cy="98" r="14" fill="#d4a94f" opacity="0.55" />
+        <Frond x={146} y={210} rotate={-10} length={128} bend={-22} leaves={11} leafSize={34} color="#3f8a5a" sway={1.4} duration={8} />
+        <Frond x={174} y={212} rotate={16} length={92} bend={18} leaves={8} leafSize={26} color="#9dbb93" sway={1.8} duration={6.5} delay={0.6} />
+      </g>
+      <path d="M104 206V112a56 56 0 0 1 112 0v94" fill="none" stroke="#cfc1a8" strokeWidth="2" />
+      <path d="M160 56v150M104 150h112" stroke="#cfc1a8" strokeWidth="1.2" opacity="0.6" />
+      <path d="M96 206h128" stroke="#b25c31" strokeWidth="5" strokeLinecap="round" />
+
+      {/* A snapshot, tilted and pinned */}
+      <g transform="translate(34 118) rotate(-8)">
+        <rect x="0" y="0" width="62" height="72" rx="4" fill="#fffdf8" stroke="#e6dccb" />
+        <rect x="6" y="6" width="50" height="46" rx="2" fill="#f8e6d8" />
+        <path d="M6 52l16-18 10 10 8-7 16 15Z" fill="#9dbb93" />
+        <circle cx="42" cy="18" r="5" fill="#e8b08a" />
+        <circle cx="31" cy="-1" r="3.2" fill="#d07c45" />
+      </g>
+
+      <RoundLeafStem x={262} y={210} rotate={10} length={128} count={8} color="#b7cbb0" />
+      <RoundLeafStem x={276} y={210} rotate={24} length={82} count={6} color="#9dbb93" opacity={0.8} />
     </svg>
   );
 }
