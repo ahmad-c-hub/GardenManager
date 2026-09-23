@@ -696,3 +696,31 @@ section + section > .group-heading {
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
+
+/* ---------- Notification deep link ----------
+   The row a tapped notification pointed at, flashed briefly once it's been
+   scrolled into view (see lib/useHighlight.js). */
+.is-highlighted {
+  animation: highlight-flash 2.4s var(--ease-out, ease) both;
+  border-radius: var(--radius-md);
+  scroll-margin: var(--space-8);
+}
+@keyframes highlight-flash {
+  0%,
+  60% {
+    background: var(--ochre-50);
+    box-shadow: inset 0 0 0 2px var(--ochre-400);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+/* No pulse, just a steady marker — the hook clears it on the same timer. */
+@media (prefers-reduced-motion: reduce) {
+  .is-highlighted {
+    animation: none;
+    background: var(--ochre-50);
+    box-shadow: inset 0 0 0 2px var(--ochre-400);
+  }
+}

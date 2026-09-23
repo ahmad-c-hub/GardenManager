@@ -945,3 +945,150 @@ html:has(.assistant) body {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------
+   Planting Assistant — "coming soon" placeholder
+   Stands in for the chat (which is still built and still works) until
+   the assistant is switched on. Full-bleed like the chat, but it
+   scrolls rather than clipping on short screens.
+   ------------------------------------------------------------------ */
+.assistant-soon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Clips the decorative frond sideways without trapping tall content. */
+  overflow-x: clip;
+  min-height: 100dvh;
+  padding: var(--space-8) var(--gutter) calc(var(--space-10) + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(760px 520px at 50% -8%, rgba(214, 228, 204, 0.55), transparent 68%),
+    radial-gradient(520px 420px at 100% 100%, rgba(248, 230, 216, 0.5), transparent 70%),
+    var(--bg);
+}
+.assistant-soon-frond {
+  position: absolute;
+  right: -40px;
+  bottom: -30px;
+  width: 300px;
+  color: var(--sage-100);
+  opacity: 0.7;
+  pointer-events: none;
+}
+/* Auto margins centre it, but keep the top reachable when it's taller than the
+   viewport — unlike centring on the container, which would clip the overflow. */
+.assistant-soon-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 560px;
+  margin: auto 0;
+  text-align: center;
+}
+.assistant-soon .assistant-hero-art {
+  width: min(240px, 60vw);
+}
+
+/* Reuses the season pill's shape, in the accent colour. */
+.assistant-soon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: 5px 14px 5px 10px;
+  border: 1px solid var(--terracotta-300);
+  border-radius: var(--radius-pill);
+  background: rgba(252, 243, 236, 0.9);
+  color: var(--terracotta-700);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.assistant-soon-badge .assistant-season-sprig {
+  color: var(--terracotta-500);
+}
+.assistant-soon h1 {
+  font-size: clamp(1.8rem, 1.2rem + 2.2vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.assistant-soon h1 em {
+  color: var(--forest-600);
+  font-style: italic;
+  font-weight: 400;
+}
+.assistant-soon-lede {
+  max-width: 48ch;
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.assistant-soon-list {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-6);
+  text-align: left;
+}
+.assistant-soon-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 253, 248, 0.72);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+.assistant-soon-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--sage-100);
+  color: var(--forest-700);
+}
+.assistant-soon-tile svg {
+  width: 18px;
+  height: 18px;
+}
+.assistant-soon-back {
+  margin-top: var(--space-7);
+}
+
+/* A sticky topbar takes over below this width, so 100dvh would overflow it. */
+@media (max-width: 960px) {
+  .assistant-soon {
+    min-height: 0;
+    padding-top: var(--space-6);
+  }
+  .assistant-soon-inner {
+    margin: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .assistant-soon {
+    padding-top: var(--space-5);
+  }
+  .assistant-soon .assistant-hero-art {
+    width: 160px;
+    margin-bottom: var(--space-3);
+  }
+  .assistant-soon-frond {
+    display: none;
+  }
+  .assistant-soon-lede {
+    font-size: var(--text-base);
+  }
+  .assistant-soon-list {
+    margin-top: var(--space-5);
+  }
+}

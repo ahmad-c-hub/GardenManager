@@ -41,6 +41,27 @@ self.addEventListener('push', (event) => {
   );
 });
 
+const ROUTE_ACK_MS = 600;
+
+/**
+ * Ask an open window to route to `url` in place, which keeps the app's state.
+ * The page answers on the port it's handed; if nothing answers in time — it may
+ * still be booting, or be sitting on the sign-in screen — navigate it instead,
+ * so a tapped notification always lands somewhere.
+ */
+async function routeExisting(client, url) {
+  const acked = await new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => resolve(false), ROUTE_ACK_MS);
+    channel.port1.onmessage = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    client.postMessage({ type: 'navigate', url }, [channel.port2]);
+  });
+  if (!acked) await client.navigate(url).catch(() => {});
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = new URL(event.notification.data?.url || '/', self.location.origin);
@@ -53,8 +74,7 @@ self.addEventListener('notificationclick', (event) => {
       const existing = windows.find((w) => new URL(w.url).origin === self.location.origin);
       if (existing) {
         await existing.focus();
-        // Let the app route in-place (keeps state); fall back to a full navigation.
-        existing.postMessage({ type: 'navigate', url: target.pathname + target.search });
+        await routeExisting(existing, target.pathname + target.search);
         return;
       }
       await clients.openWindow(target.href);

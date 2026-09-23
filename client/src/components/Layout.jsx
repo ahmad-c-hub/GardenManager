@@ -57,6 +57,8 @@ function usePushSync(userId) {
     if (!('serviceWorker' in navigator)) return undefined;
     const onMessage = (event) => {
       if (event.data?.type === 'navigate' && typeof event.data.url === 'string' && event.data.url.startsWith('/')) {
+        // Tell the worker we've got it, so it doesn't reload the window instead.
+        event.ports?.[0]?.postMessage('ok');
         navigate(event.data.url);
       }
     };

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarClock, Fence, MapPin, Pencil, Plus, Ruler, Sprout, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useCollection } from '../lib/useCollection.js';
+import { useHighlight } from '../lib/useHighlight.js';
 import { clean, useForm } from '../lib/useForm.js';
 import { useToast } from '../lib/toast.jsx';
 import { PLANT_STATUSES, isActiveStatus } from '../lib/constants.js';
@@ -113,7 +114,7 @@ function HarvestWhen({ date, status }) {
 
 function PlantRow({ plant, onStatus, onEdit, onDelete }) {
   return (
-    <motion.li layout className={`list-row plant-row ${isActiveStatus(plant.status) ? '' : 'dim'}`} {...listItem}>
+    <motion.li layout className={`list-row plant-row ${isActiveStatus(plant.status) ? '' : 'dim'}`} data-entry-id={plant.id} {...listItem}>
       <div className="plant-line">
         <div className="list-title">
           {plant.name}
@@ -281,6 +282,7 @@ export default function Garden() {
 
   const loading = !beds.data || !plants.data;
   const error = beds.error || plants.error;
+  useHighlight(!loading, 'plant'); // ?plant=<id> from a harvest reminder
   const unassigned = byBed.get(0) ?? [];
 
   return (

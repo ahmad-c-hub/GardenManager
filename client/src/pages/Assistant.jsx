@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  ArrowLeft,
   ArrowUp,
   Camera,
   History,
@@ -12,6 +13,7 @@ import {
   MessageSquarePlus,
   MessagesSquare,
   Plus,
+  Sprout,
   Trash2,
   X,
 } from 'lucide-react';
@@ -20,7 +22,7 @@ import { useToast } from '../lib/toast.jsx';
 import { timeAgo } from '../lib/format.js';
 import { imageVariant, largeVariant } from '../lib/cloudinary.js';
 import { ConfirmDialog } from '../components/ui.jsx';
-import { BrandMark, Frond, RoundLeafStem, Sprig } from '../components/Botanical.jsx';
+import { BrandMark, CornerFrond, Frond, RoundLeafStem, Sprig } from '../components/Botanical.jsx';
 
 const EASE = [0.22, 1, 0.36, 1];
 const MAX_TEXT = 4000;
@@ -517,7 +519,78 @@ function useViewportFit(ref) {
   }, [ref]);
 }
 
+/* ------------------------------------------------------------------ */
+/* Coming soon                                                          */
+/* ------------------------------------------------------------------ */
+
+const SOON_PREVIEW = [
+  { icon: Sprout, text: 'Sowing times for your own beds' },
+  { icon: Camera, text: 'Point the camera at a leaf for a diagnosis' },
+  { icon: MessagesSquare, text: 'Companions, soil and pests, season by season' },
+];
+
+/**
+ * Placeholder shown in place of the chat while the assistant is being finished.
+ * The whole chat below is still here and still works: swap the default export
+ * back to <AssistantChat /> to switch it on.
+ */
+function ComingSoon() {
+  return (
+    <MotionConfig transition={{ duration: 0.6, ease: EASE }}>
+      <div className="assistant-soon">
+        <CornerFrond className="assistant-soon-frond" color="#e6eedf" />
+        <motion.div
+          className="assistant-soon-inner"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: EASE }}
+        >
+          <GreenhouseArt />
+
+          <p className="assistant-soon-badge">
+            <Sprig className="assistant-season-sprig" />
+            Coming soon
+          </p>
+
+          <h1>
+            The <em>Planting Assistant</em> is still sprouting
+          </h1>
+          <p className="assistant-soon-lede">
+            A garden-savvy helper that knows your beds, what’s in them and what you’ve harvested. It’s nearly ready —
+            we’re letting it settle in before opening the greenhouse door.
+          </p>
+
+          <motion.ul
+            className="assistant-soon-list"
+            initial="hidden"
+            animate="show"
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08, delayChildren: 0.3 } } }}
+          >
+            {SOON_PREVIEW.map(({ icon: Icon, text }) => (
+              <motion.li
+                key={text}
+                variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } } }}
+              >
+                <span className="assistant-soon-tile" aria-hidden="true"><Icon /></span>
+                {text}
+              </motion.li>
+            ))}
+          </motion.ul>
+
+          <Link to="/" className="btn btn-secondary assistant-soon-back">
+            <ArrowLeft /> Back to the dashboard
+          </Link>
+        </motion.div>
+      </div>
+    </MotionConfig>
+  );
+}
+
 export default function Assistant() {
+  return <ComingSoon />;
+}
+
+function AssistantChat() {
   const { conversationId } = useParams();
   const activeId = conversationId ? Number(conversationId) : null;
   const navigate = useNavigate();

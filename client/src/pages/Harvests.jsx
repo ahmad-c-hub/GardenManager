@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Fence, Pencil, Plus, Scale, Sprout, Trash2, Wheat } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useCollection } from '../lib/useCollection.js';
+import { useHighlight } from '../lib/useHighlight.js';
 import { clean, useForm } from '../lib/useForm.js';
 import { useToast } from '../lib/toast.jsx';
 import { formatDate, formatKg, formatMonthYear, groupByMonth, todayISO } from '../lib/format.js';
@@ -264,6 +265,7 @@ export default function Harvests() {
   }, [rows]);
 
   const groups = useMemo(() => (rows ? groupByMonth(rows, 'harvested_on') : []), [rows]);
+  useHighlight(Boolean(rows)); // ?highlight=<id> from a "new harvest" notification
 
   async function create(values) {
     await api.post('/harvests', values);
@@ -338,7 +340,7 @@ export default function Harvests() {
                   <ul className="list">
                     <AnimatePresence initial={false}>
                       {g.rows.map((r) => (
-                        <motion.li layout className="list-row" key={r.id} {...listItem}>
+                        <motion.li layout className="list-row" key={r.id} data-entry-id={r.id} {...listItem}>
                           <span className="icon-tile sm tone-kg"><Wheat /></span>
                           <div className="list-main">
                             <div className="list-title">{r.crop_name}</div>

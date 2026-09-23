@@ -92,7 +92,7 @@ export const savingsRouter = crudRouter({
   filters: (q, addParam) => dateRange(q, addParam, 's.saved_on'),
   onCreate(row, req) {
     notifyActivity(req.user.id, 'New deposit', `${firstName(req.user)} added ${money.format(row.amount)} to the garden fund.`, {
-      url: '/savings',
+      url: `/savings?highlight=${row.id}`,
     });
   },
 });
@@ -123,7 +123,7 @@ export const expensesRouter = crudRouter({
   onCreate(row, req) {
     const what = row.description ? ` on ${row.description}` : ` on ${row.category}`;
     notifyActivity(req.user.id, 'New expense', `${firstName(req.user)} spent ${money.format(row.amount)}${what}.`, {
-      url: '/expenses',
+      url: `/expenses?highlight=${row.id}`,
     });
   },
 });
@@ -155,7 +155,7 @@ export const harvestsRouter = crudRouter({
   },
   onCreate(row, req) {
     notifyActivity(req.user.id, 'New harvest', `${firstName(req.user)} harvested ${row.quantity_kg} kg of ${row.crop_name}.`, {
-      url: '/harvests',
+      url: `/harvests?highlight=${row.id}`,
     });
   },
 });

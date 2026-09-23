@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Layers, Pencil, Plus, Receipt, Sprout, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useCollection } from '../lib/useCollection.js';
+import { useHighlight } from '../lib/useHighlight.js';
 import { clean, useForm } from '../lib/useForm.js';
 import { useToast } from '../lib/toast.jsx';
 import { EXPENSE_CATEGORIES, categoryMeta } from '../lib/constants.js';
@@ -92,6 +93,7 @@ export default function Expenses() {
   const { data: plants } = useCollection('/plants');
   const [modal, setModal] = useState(null); // null | { mode: 'create' } | { mode: 'edit', row }
   const [deleting, setDeleting] = useState(null);
+  useHighlight(Boolean(rows)); // ?highlight=<id> from a "new expense" notification
 
   const filtered = filters.category || filters.from || filters.to;
   const total = useMemo(() => (rows ?? []).reduce((s, r) => s + r.amount, 0), [rows]);
@@ -201,7 +203,7 @@ export default function Expenses() {
                   const meta = categoryMeta(r.category);
                   const Icon = meta.icon;
                   return (
-                    <motion.li layout className="list-row" key={r.id} {...listItem}>
+                    <motion.li layout className="list-row" key={r.id} data-entry-id={r.id} {...listItem}>
                       <span className="icon-tile tone-spent"><Icon /></span>
                       <div className="list-main">
                         <div className="list-title">{r.description || meta.label}</div>

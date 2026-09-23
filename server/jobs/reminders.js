@@ -59,7 +59,9 @@ async function sendHarvestReminder(user, today) {
       ? `${plantLabel(first)} should be ready ${whenLabel(first.days_left)}.`
       : `${plants.map(plantLabel).slice(0, 4).join(', ')}${plants.length > 4 ? '…' : ''} — first one ${whenLabel(first.days_left)}.`;
 
-  const delivered = await sendPushToUser(user.id, title, body, { url: '/garden', tag: 'harvest' });
+  // One plant: jump straight to it. Several: the garden page is the right landing spot.
+  const url = plants.length === 1 ? `/garden?plant=${first.id}` : '/garden';
+  const delivered = await sendPushToUser(user.id, title, body, { url, tag: 'harvest' });
   if (delivered > 0) {
     await query(
       `INSERT INTO harvest_reminders_sent (user_id, plant_id, expected_harvest_date)

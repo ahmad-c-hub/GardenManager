@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useCollection } from '../lib/useCollection.js';
+import { useHighlight } from '../lib/useHighlight.js';
 import { clean, useForm } from '../lib/useForm.js';
 import { useToast } from '../lib/toast.jsx';
 import {
@@ -84,6 +85,7 @@ export default function Savings() {
   }, [rows]);
 
   const groups = useMemo(() => (rows ? groupByMonth(rows, 'saved_on') : []), [rows]);
+  useHighlight(Boolean(rows)); // ?highlight=<id> from a "new deposit" notification
 
   async function create(values) {
     await api.post('/savings', values);
@@ -160,7 +162,7 @@ export default function Savings() {
                   <ul className="list">
                     <AnimatePresence initial={false}>
                       {g.rows.map((r) => (
-                        <motion.li layout className="list-row" key={r.id} {...listItem}>
+                        <motion.li layout className="list-row" key={r.id} data-entry-id={r.id} {...listItem}>
                           <span className="icon-tile sm tone-saved"><PiggyBank /></span>
                           <div className="list-main">
                             <div className="list-title">{r.note || 'Deposit'}</div>

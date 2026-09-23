@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion, useInView, useDragControls, useMotionValue, useReducedMotion, useTransform } from 'framer-motion';
 import { Camera, ChevronLeft, ChevronRight, ImagePlus, Leaf, RefreshCw, Sprout, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -620,6 +621,16 @@ export default function Moments() {
   const visible = useMemo(() => moments?.slice(0, ready) ?? [], [moments, ready]);
   const sections = useMemo(() => groupSections(visible), [visible]);
   const openIndex = visible.findIndex((m) => m.id === openId);
+
+  // Tapping a "new garden moment" notification lands here as /moments?moment=<id>:
+  // open that photo as soon as it's laid out, then tidy the URL.
+  const [params, setParams] = useSearchParams();
+  const wanted = Number(params.get('moment')) || null;
+  useEffect(() => {
+    if (!wanted || !visible.some((m) => m.id === wanted)) return;
+    setOpenId(wanted);
+    setParams({}, { replace: true });
+  }, [wanted, visible, setParams]);
 
   async function loadMore() {
     setLoadingMore(true);

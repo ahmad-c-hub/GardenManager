@@ -34,6 +34,8 @@ async function findItem(id) {
 
 const firstName = (user) => (user.display_name || user.email).split(' ')[0];
 const whenFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', timeZone: GARDEN_TIMEZONE });
+// YYYY-MM-DD in the garden's own timezone, for /calendar?date=… deep links.
+const isoDayFmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: GARDEN_TIMEZONE });
 
 // ?from=YYYY-MM-DD&to=YYYY-MM-DD — every occurrence in the range, recurring items expanded.
 router.get('/', async (req, res) => {
@@ -61,7 +63,7 @@ router.post('/', async (req, res) => {
   const created = await findItem(rows[0].id);
   res.status(201).json(created);
   notifyActivity(req.user.id, 'New garden task', `${firstName(req.user)} scheduled “${created.title}” for ${whenFmt.format(created.scheduled_at)}.`, {
-    url: '/calendar',
+    url: `/calendar?date=${isoDayFmt.format(created.scheduled_at)}`,
     tag: 'work-item-new',
   });
 });

@@ -64,7 +64,7 @@ router.post('/', acceptImage, async (req, res) => {
 
   res.status(201).json(created);
   notifyActivity(req.user.id, 'New garden moment', `${req.user.display_name} shared a new garden moment 🌿`, {
-    url: '/moments',
+    url: `/moments?moment=${created.id}`,
     tag: 'moment',
   });
 });
