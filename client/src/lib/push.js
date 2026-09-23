@@ -63,10 +63,19 @@ export async function enablePush() {
   return sub;
 }
 
-/** Unsubscribe this device locally and on the server. */
-export async function disablePush() {
+/**
+ * Stop notifications reaching this device.
+ *
+ * `revoke` (the default) also tears down the browser's own subscription — the
+ * full reset someone means when they explicitly turn notifications off here.
+ * Signing out passes `revoke: false` instead: the server forgets the device,
+ * so nothing is sent to it while no one is signed in, but the subscription
+ * survives. Signing back in then picks it up again through usePushSync,
+ * without making anyone grant permission a second time.
+ */
+export async function disablePush({ revoke = true } = {}) {
   const sub = await currentSubscription();
   if (!sub) return;
   await api.post('/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
-  await sub.unsubscribe();
+  if (revoke) await sub.unsubscribe();
 }

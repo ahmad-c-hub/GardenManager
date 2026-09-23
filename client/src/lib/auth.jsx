@@ -24,8 +24,10 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      // Stop this device getting the signed-out person's notifications.
-      await disablePush().catch(() => {});
+      // Stop this device getting the signed-out person's notifications. The
+      // subscription itself is left alone, so signing back in restores them
+      // silently — and whoever signs in next gets their own, not ours.
+      await disablePush({ revoke: false }).catch(() => {});
       await api.post('/auth/logout');
     } finally {
       setUser(null);
