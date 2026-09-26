@@ -587,7 +587,7 @@ function ComingSoon() {
 }
 
 export default function Assistant() {
-  return <ComingSoon />;
+  return <AssistantChat />;
 }
 
 function AssistantChat() {
