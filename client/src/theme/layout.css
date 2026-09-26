@@ -216,6 +216,9 @@
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
+    /* Top bar sized to its content; main takes the rest. Without this a short
+       (or fixed-position, like the assistant) page stretches the top bar. */
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .sidebar {
     position: fixed;

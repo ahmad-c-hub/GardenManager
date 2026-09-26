@@ -222,6 +222,12 @@ html:has(.assistant) body {
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+.chat-head-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-head-dot {
   width: 7px;
   height: 7px;

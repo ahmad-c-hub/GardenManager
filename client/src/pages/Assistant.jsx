@@ -902,7 +902,7 @@ function AssistantChat() {
               </AnimatePresence>
               <p>
                 <span className="chat-head-dot" aria-hidden="true" />
-                Knows your beds · tuned to the Bekaa Valley
+                <span className="chat-head-sub">Knows your beds · tuned to the Bekaa Valley</span>
               </p>
             </div>
             <button type="button" className="icon-btn chat-head-btn" onClick={newChat} aria-label="New chat">
