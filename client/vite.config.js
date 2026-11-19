@@ -32,7 +32,10 @@ export default defineConfig(({ mode }) => {
         output: {
           // Split big libraries into their own long-cacheable chunks.
           manualChunks: {
-            react: ['react', 'react-dom', 'react-router-dom'],
+            // List the entry points actually imported (react-dom/client, the JSX runtime), or
+            // react-dom can drift into the main chunk when another library pulls React in.
+            react: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', 'react-router-dom'],
+            zoom: ['react-zoom-pan-pinch'],
             charts: ['recharts'],
             motion: ['framer-motion'],
             markdown: ['react-markdown', 'remark-gfm'],

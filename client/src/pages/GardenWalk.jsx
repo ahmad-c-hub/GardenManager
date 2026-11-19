@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Check, Film, Footprints, ImagePlus, ImageUp, MapPinPlus, Move, X } from 'lucide-react';
+import { AlertCircle, Check, Film, Footprints, ImagePlus, ImageUp, MapPinPlus, Maximize, Minus, Move, Plus, RotateCcw, X } from 'lucide-react';
+import { TransformComponent, TransformWrapper, useControls } from 'react-zoom-pan-pinch';
 import { ApiError, api } from '../lib/api.js';
 import { useToast } from '../lib/toast.jsx';
 import { imageVariant, isCloudinary } from '../lib/cloudinary.js';
 import { checkUpload, mediaKindOf, uploadToCloudinary } from '../lib/uploadToCloudinary.js';
 import { nextInWalk, runLimited, travelVector } from '../lib/gardenWalk.js';
+import { useFocusTrap } from '../lib/useFocusTrap.js';
 import { ConfirmDialog, ErrorBanner, FormError, Modal, PageHeader } from '../components/ui.jsx';
 import { GardenPlanArt } from '../components/Botanical.jsx';
 import { OverflowMenu, PinGallery, UploadStatus } from '../components/PinGallery.jsx';
@@ -65,7 +67,7 @@ function PinMarker({ pin, delay, selected, inert, onSelect }) {
       data-pin-id={pin.id}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(pin);
+        onSelect(pin, e);
       }}
       tabIndex={inert ? -1 : 0}
       aria-haspopup="dialog"
@@ -147,11 +149,88 @@ function GhostPin({ point, imageRef, draggable, onMove, onDragged }) {
 /* Map                                                                  */
 /* ------------------------------------------------------------------ */
 
-function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, activeId, trail, movingId, onSelect, mapUpload }) {
+// Elements that handle their own taps and drags: the zoom library must leave them alone.
+const ZOOM_EXCLUDED = ['gw-pin', 'gw-ghost', 'gw-zoom-controls', 'gw-chooser'];
+const MAX_ZOOM = 6;
+
+const contains = (r, x, y) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+
+function ZoomControls({ zoomed }) {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+  return (
+    <div className="gw-zoom-controls" role="group" aria-label="Map zoom">
+      <button type="button" onClick={() => zoomIn(0.6)} aria-label="Zoom in">
+        <Plus />
+      </button>
+      <button type="button" onClick={() => zoomOut(0.6)} disabled={!zoomed} aria-label="Zoom out">
+        <Minus />
+      </button>
+      {zoomed && (
+        <button type="button" onClick={() => resetTransform()} aria-label="Reset zoom">
+          <Maximize />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Small menu for a tap that lands where two or more pins' touch areas overlap. */
+function PinChooser({ chooser, frameWidth, onPick, onClose }) {
+  const ref = useRef(null);
+  useFocusTrap(ref, true);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    ref.current?.querySelector('button')?.focus({ preventScroll: true });
+    const away = (e) => !ref.current?.contains(e.target) && onClose();
+    const key = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', key);
+      previouslyFocused?.focus?.({ preventScroll: true });
+    };
+  }, [onClose]);
+
+  const width = Math.min(240, frameWidth - 16);
+  const left = Math.min(Math.max(8, chooser.x - width / 2), frameWidth - width - 8);
+  return (
+    <motion.div
+      ref={ref}
+      className="gw-chooser"
+      role="dialog"
+      aria-label="Choose a spot"
+      style={{ left, top: chooser.y + 12, width }}
+      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.12 } }}
+      transition={{ type: 'spring', stiffness: 520, damping: 34 }}
+    >
+      <p className="gw-chooser-title">{chooser.pins.length} spots here</p>
+      {chooser.pins.map((pin) => (
+        <button key={pin.id} type="button" onClick={() => onPick(pin)}>
+          <MarkerArt />
+          <span>
+            <strong>{pin.label}</strong>
+            <small>
+              {pin.media_count} {pin.media_count === 1 ? 'item' : 'items'}
+            </small>
+          </span>
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
+function GardenMap({ map, pins, stage, ghost, setGhost, onTap, activeId, trail, movingId, onSelect, mapUpload }) {
   const reduce = useReducedMotion();
+  const frameRef = useRef(null);
   const imageRef = useRef(null);
   const justDragged = useRef(false);
+  const panned = useRef(false);
   const [ready, setReady] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const [chooser, setChooser] = useState(null); // { x, y, pins } in frame coordinates
   // Pins on screen at first paint drop in one after another; pins added later just drop.
   const firstPins = useRef(null);
   if (ready && firstPins.current === null) firstPins.current = new Set(pins.map((p) => p.id));
@@ -164,100 +243,247 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
   const ratio = map.width && map.height ? map.width / map.height : null;
   // Lower pins are drawn over higher ones, as on a real map. The pin being moved is shown as the ghost instead.
   const ordered = pins.filter((p) => p.id !== movingId).sort((a, b) => a.y_percent - b.y_percent);
+  const closeChooser = useCallback(() => setChooser(null), []);
+  const zoomRef = useRef(null);
+
+  // Double-tap (or double-click) resets the zoom. Handled here rather than by the zoom
+  // library: after a tap, phones send compatibility mouse events whose mousedown starts a
+  // "pan" that cancels the library's reset animation. Cancelling the second tap's touchend
+  // suppresses those, and the reset runs a frame later, after the library's own touchend.
+  useEffect(() => {
+    const wrapper = frameRef.current?.querySelector('.gw-zoom');
+    if (!wrapper) return undefined;
+    const excluded = (target) => target.closest?.(ZOOM_EXCLUDED.map((c) => `.${c}`).join(','));
+    const reset = () => requestAnimationFrame(() => zoomRef.current?.resetTransform());
+    let last = null;
+    let start = null;
+    let moved = false;
+    const touchStart = (e) => {
+      if (e.touches.length !== 1) {
+        last = null;
+        start = null;
+        return;
+      }
+      start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      moved = false;
+    };
+    const touchMove = (e) => {
+      const t = e.touches[0];
+      if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) moved = true;
+    };
+    const touchEnd = (e) => {
+      if (e.touches.length > 0 || !start) return;
+      if (moved || excluded(e.target)) {
+        last = null;
+        return;
+      }
+      const t = e.changedTouches[0];
+      if (last && e.timeStamp - last.time < 320 && Math.hypot(t.clientX - last.x, t.clientY - last.y) < 32) {
+        e.preventDefault();
+        last = null;
+        reset();
+      } else {
+        last = { time: e.timeStamp, x: t.clientX, y: t.clientY };
+      }
+    };
+    const dblClick = (e) => !excluded(e.target) && reset();
+    wrapper.addEventListener('touchstart', touchStart, { passive: true });
+    wrapper.addEventListener('touchmove', touchMove, { passive: true });
+    wrapper.addEventListener('touchend', touchEnd, { passive: false });
+    wrapper.addEventListener('dblclick', dblClick);
+    return () => {
+      wrapper.removeEventListener('touchstart', touchStart);
+      wrapper.removeEventListener('touchmove', touchMove);
+      wrapper.removeEventListener('touchend', touchEnd);
+      wrapper.removeEventListener('dblclick', dblClick);
+    };
+  }, []);
+
+  // Pins counter-scale (via --zoom) so they stay the same size on screen at any zoom.
+  const onTransform = useCallback((_ref, { scale }) => {
+    frameRef.current?.style.setProperty('--zoom', String(scale));
+    setZoomed(scale > 1.01);
+  }, []);
 
   function tap(e) {
-    if (!adding) return onBackgroundTap();
-    if (stage === 'details') return;
+    if (panned.current) {
+      panned.current = false; // the end of a pan, not a tap
+      return;
+    }
+    if (!adding || stage === 'details') return;
     if (justDragged.current) {
       justDragged.current = false;
       return;
     }
+    // The image's live rect already includes the zoom and pan.
     onTap(pointOnImage(imageRef.current, e.clientX, e.clientY));
   }
 
-  return (
-    <div className={`gw-frame ${adding ? 'is-adding' : ''} ${activeId ? 'is-walking' : ''}`}>
-      <div
-        className={`gw-canvas ${ratio ? 'has-ratio' : ''}`}
-        style={ratio ? { aspectRatio: ratio, '--ratio': ratio } : undefined}
-        onClick={tap}
-      >
-        <img
-          ref={imageRef}
-          className={`gw-map-img ${ready ? 'is-ready' : ''}`}
-          src={imageVariant(map.image_url, 'c_limit,w_1200')}
-          srcSet={mapSrcSet(map.image_url)}
-          sizes="(max-width: 960px) 100vw, 1180px"
-          width={map.width ?? undefined}
-          height={map.height ?? undefined}
-          alt="Layout of the garden"
-          draggable={false}
-          onLoad={() => setReady(true)}
-        />
+  function pinTap(pin, e) {
+    // Keyboard activation has no position: open the focused pin.
+    if (e.detail === 0) return onSelect(pin);
+    const { clientX: x, clientY: y } = e;
+    const els = [...frameRef.current.querySelectorAll('.gw-pin[data-pin-id]')];
+    const hits = els.filter((el) => contains(el.getBoundingClientRect(), x, y));
+    if (hits.length <= 1) return onSelect(pin);
+    // Right on one marker's drawing: that's the one meant.
+    const onMarker = hits.filter((el) => contains(el.querySelector('.gw-marker-art').getBoundingClientRect(), x, y));
+    const byId = (el) => pins.find((p) => p.id === Number(el.dataset.pinId));
+    if (onMarker.length === 1) return onSelect(byId(onMarker[0]));
+    const fr = frameRef.current.getBoundingClientRect();
+    setChooser({ x: x - fr.left, y: y - fr.top, pins: hits.map(byId).filter(Boolean) });
+  }
 
-        {/* The last step of the walk, as a faint dashed path between pins. Percent
-            coordinates map straight onto the stretched viewBox; strokes stay crisp. */}
-        {ready && (
-          <svg className="gw-trail" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+  return (
+    <div
+      ref={frameRef}
+      className={`gw-frame ${adding ? 'is-adding' : ''} ${activeId ? 'is-walking' : ''} ${zoomed ? 'is-zoomed' : ''}`}
+      role="group"
+      aria-label={`Garden map with ${pins.length} ${pins.length === 1 ? 'spot' : 'spots'}`}
+    >
+      <TransformWrapper
+        ref={zoomRef}
+        minScale={1}
+        maxScale={MAX_ZOOM}
+        limitToBounds
+        centerZoomedOut
+        // At 1× there's nothing to pan, and a pan handler would block the page from scrolling.
+        panning={{ disabled: !zoomed, excluded: ZOOM_EXCLUDED }}
+        pinch={{ excluded: ['gw-ghost'] }}
+        // A mouse wheel keeps scrolling the page; zoom with the buttons or a trackpad pinch.
+        wheel={{ wheelDisabled: true, excluded: ZOOM_EXCLUDED }}
+        trackPadPanning={{ disabled: true }}
+        doubleClick={{ disabled: true }} // see the double-tap effect above
+        onTransform={onTransform}
+        onPanningStart={() => {
+          panned.current = false;
+          closeChooser();
+        }}
+        onPanning={() => {
+          panned.current = true;
+        }}
+        onPinchStart={closeChooser}
+        onZoomStart={closeChooser}
+      >
+        <TransformComponent wrapperClass="gw-zoom" contentClass="gw-zoom-content">
+          <div
+            className={`gw-canvas ${ratio ? 'has-ratio' : ''} ${ready ? '' : 'skeleton'}`}
+            style={ratio ? { aspectRatio: ratio, '--ratio': ratio } : undefined}
+            onClick={tap}
+          >
+            <img
+              ref={imageRef}
+              className={`gw-map-img ${ready ? 'is-ready' : ''}`}
+              src={imageVariant(map.image_url, 'c_limit,w_1200')}
+              srcSet={mapSrcSet(map.image_url)}
+              // Zoomed in, fetch the full-resolution copy so detail stays sharp.
+              sizes={zoomed ? '1600px' : '(max-width: 960px) 100vw, 1180px'}
+              width={map.width ?? undefined}
+              height={map.height ?? undefined}
+              alt="Layout of the garden"
+              draggable={false}
+              onLoad={() => setReady(true)}
+            />
+
+            {/* The last step of the walk, as a faint dashed path between pins. Percent
+                coordinates map straight onto the stretched viewBox; strokes stay crisp. */}
+            {ready && (
+              <svg className="gw-trail" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <AnimatePresence>
+                  {trail && (
+                    <motion.line
+                      key={`${trail.from.id}-${trail.to.id}`}
+                      x1={trail.from.x_percent}
+                      y1={trail.from.y_percent}
+                      vectorEffect="non-scaling-stroke"
+                      // Grow the line from the previous pin (not pathLength, which would replace the dashes).
+                      initial={{ opacity: 0, x2: reduce ? trail.to.x_percent : trail.from.x_percent, y2: reduce ? trail.to.y_percent : trail.from.y_percent }}
+                      animate={{ opacity: 1, x2: trail.to.x_percent, y2: trail.to.y_percent }}
+                      exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                      transition={{ duration: reduce ? 0.2 : 0.7, ease: EASE }}
+                    />
+                  )}
+                </AnimatePresence>
+              </svg>
+            )}
+
+            {ready &&
+              ordered.map((pin, i) => (
+                <PinMarker
+                  key={pin.id}
+                  pin={pin}
+                  delay={firstPins.current?.has(pin.id) ? 0.15 + i * 0.07 : 0}
+                  selected={pin.id === activeId}
+                  inert={adding}
+                  onSelect={pinTap}
+                />
+              ))}
+
             <AnimatePresence>
-              {trail && (
-                <motion.line
-                  key={`${trail.from.id}-${trail.to.id}`}
-                  x1={trail.from.x_percent}
-                  y1={trail.from.y_percent}
-                  vectorEffect="non-scaling-stroke"
-                  // Grow the line from the previous pin (not pathLength, which would replace the dashes).
-                  initial={{ opacity: 0, x2: reduce ? trail.to.x_percent : trail.from.x_percent, y2: reduce ? trail.to.y_percent : trail.from.y_percent }}
-                  animate={{ opacity: 1, x2: trail.to.x_percent, y2: trail.to.y_percent }}
-                  exit={{ opacity: 0, transition: { duration: 0.3 } }}
-                  transition={{ duration: reduce ? 0.2 : 0.7, ease: EASE }}
+              {ghost && (
+                <GhostPin
+                  key="ghost"
+                  point={ghost}
+                  imageRef={imageRef}
+                  draggable={stage === 'dropping' || stage === 'adjusting' || stage === 'moving'}
+                  onMove={setGhost}
+                  onDragged={() => {
+                    justDragged.current = true;
+                  }}
                 />
               )}
             </AnimatePresence>
-          </svg>
+          </div>
+        </TransformComponent>
+        {ready && <ZoomControls zoomed={zoomed} />}
+      </TransformWrapper>
+
+      <AnimatePresence>
+        {chooser && (
+          <PinChooser
+            key="chooser"
+            chooser={chooser}
+            frameWidth={frameRef.current?.clientWidth ?? 320}
+            onClose={closeChooser}
+            onPick={(pin) => {
+              setChooser(null);
+              onSelect(pin);
+            }}
+          />
         )}
+      </AnimatePresence>
 
-        {ready &&
-          ordered.map((pin, i) => (
-            <PinMarker
-              key={pin.id}
-              pin={pin}
-              delay={firstPins.current?.has(pin.id) ? 0.15 + i * 0.07 : 0}
-              selected={pin.id === activeId}
-              inert={adding}
-              onSelect={onSelect}
-            />
-          ))}
+      <AnimatePresence>
+        {mapUpload && (
+          <motion.div
+            className="gw-map-uploading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="status"
+          >
+            <UploadStatus upload={mapUpload} label="Uploading the new layout" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
-        <AnimatePresence>
-          {ghost && (
-            <GhostPin
-              key="ghost"
-              point={ghost}
-              imageRef={imageRef}
-              draggable={stage === 'dropping' || stage === 'adjusting' || stage === 'moving'}
-              onMove={setGhost}
-              onDragged={() => {
-                justDragged.current = true;
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {mapUpload && (
-            <motion.div
-              className="gw-map-uploading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              role="status"
-            >
-              <UploadStatus upload={mapUpload} label="Uploading the new layout" />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+/** A failed map upload, with the same file one tap away from another try. */
+function UploadFailed({ failure, onRetry, onDismiss }) {
+  return (
+    <div className="gw-failed" role="alert">
+      <AlertCircle aria-hidden="true" />
+      <span>
+        <strong>The layout didn’t upload.</strong> {failure.message}
+      </span>
+      <button type="button" className="btn btn-primary btn-sm" onClick={onRetry}>
+        <RotateCcw /> Try again
+      </button>
+      <button type="button" className="icon-btn" onClick={onDismiss} aria-label="Dismiss">
+        <X />
+      </button>
     </div>
   );
 }
@@ -564,7 +790,7 @@ function PinForm({ draft, setDraft, point, onCreated, onCancel, onAdjust, onBusy
             </>
           ) : (
             <>
-              <MapPinPlus /> Add spot
+              {error ? <RotateCcw /> : <MapPinPlus />} {error ? 'Try again' : 'Add spot'}
             </>
           )}
         </button>
@@ -603,6 +829,7 @@ export default function GardenWalk() {
   const [walk, setWalk] = useState(null); // { history: number[], visited: Set<number>, travel: {x, y} }
   const [origin, setOrigin] = useState(null);
   const [mapUpload, setMapUpload] = useState(null); // { progress, saving } while a layout uploads
+  const [mapFailure, setMapFailure] = useState(null); // { file, message } after a failed upload
   const [confirmReplace, setConfirmReplace] = useState(false);
   const mapInput = useRef(null);
   const dropTimer = useRef(null);
@@ -673,9 +900,11 @@ export default function GardenWalk() {
     return () => clearTimeout(t);
   }, [wanted, byId, openPin, setParams]);
 
-  const updatePin = useCallback((pin) => {
-    setData((d) => ({ ...d, pins: d.pins.map((p) => (p.id === pin.id ? pin : p)) }));
+  /** Update one pin with `fn(pin)`; always applied to the latest data, so optimistic edits and rollbacks compose. */
+  const patchPin = useCallback((id, fn) => {
+    setData((d) => ({ ...d, pins: d.pins.map((p) => (p.id === id ? fn(p) : p)) }));
   }, []);
+  const updatePin = useCallback((pin) => patchPin(pin.id, () => pin), [patchPin]);
 
   const removePin = useCallback((pin) => {
     setOrigin(null);
@@ -754,6 +983,7 @@ export default function GardenWalk() {
     const problem = checkUpload(file, 'map');
     if (problem) return toast.error(problem);
     const replacing = Boolean(data?.map);
+    setMapFailure(null);
     setMapUpload({ progress: 0 });
     try {
       const up = await uploadToCloudinary(file, 'map', (progress) => setMapUpload({ progress }));
@@ -762,7 +992,7 @@ export default function GardenWalk() {
       setData((d) => ({ map, pins: d?.pins ?? [] }));
       toast.success(replacing ? 'Garden layout replaced' : 'Garden layout added');
     } catch (err) {
-      toast.error(err.message);
+      setMapFailure({ file, message: err.message });
     } finally {
       setMapUpload(null);
     }
@@ -835,9 +1065,17 @@ export default function GardenWalk() {
       ) : !data ? (
         <MapSkeleton />
       ) : !data.map ? (
-        <EmptyGarden onUpload={() => mapInput.current?.click()} upload={mapUpload} />
+        <>
+          {mapFailure && (
+            <UploadFailed failure={mapFailure} onRetry={() => uploadMap(mapFailure.file)} onDismiss={() => setMapFailure(null)} />
+          )}
+          <EmptyGarden onUpload={() => mapInput.current?.click()} upload={mapUpload} />
+        </>
       ) : (
         <>
+          {mapFailure && (
+            <UploadFailed failure={mapFailure} onRetry={() => uploadMap(mapFailure.file)} onDismiss={() => setMapFailure(null)} />
+          )}
           <GardenMap
             map={data.map}
             pins={pins}
@@ -845,13 +1083,16 @@ export default function GardenWalk() {
             ghost={ghost}
             setGhost={setGhost}
             onTap={tapMap}
-            onBackgroundTap={() => {}}
             activeId={currentId}
             trail={trail}
             movingId={movingPin?.id}
             onSelect={openPin}
             mapUpload={mapUpload}
           />
+          <p className="gw-zoom-hint">
+            <span className="on-touch">Pinch to zoom in on busy corners · double-tap to reset</span>
+            <span className="on-pointer">Zoom with + and − or a trackpad pinch · double-click to reset</span>
+          </p>
           {pins.length === 0 && stage === 'idle' && (
             <p className="gw-first-pin">
               No spots yet. Choose <strong>Add pin</strong> and tap a bed to start the walk.
@@ -919,6 +1160,7 @@ export default function GardenWalk() {
             onNext={walkNext}
             onClose={closeWalk}
             onPinChange={updatePin}
+            onPinPatch={patchPin}
             onPinDeleted={removePin}
             onMove={startMove}
           />

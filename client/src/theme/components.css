@@ -624,6 +624,14 @@ section + section > .group-heading {
     max-width: none;
   }
 }
+/* While a bottom sheet or the Garden Walk gallery is open, its buttons live at the
+   bottom of the screen: show toasts at the top so they never cover them. */
+@media (max-width: 560px) {
+  body:has(.modal-backdrop, .gwg) .toast-region {
+    top: calc(var(--space-4) + env(safe-area-inset-top));
+    bottom: auto;
+  }
+}
 
 /* ---------- Loading ---------- */
 .skeleton {

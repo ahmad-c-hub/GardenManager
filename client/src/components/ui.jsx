@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useReducedMotion } from 'framer-motion';
 import { AlertCircle, X } from 'lucide-react';
 import { PotArt } from './Botanical.jsx';
+import { useFocusTrap } from '../lib/useFocusTrap.js';
 
 export function PageHeader({ eyebrow, eyebrowIcon: EyebrowIcon, title, subtitle, actions }) {
   return (
@@ -84,6 +85,7 @@ export function FormError({ error }) {
 
 export function Modal({ open, onClose, title, description, children, size }) {
   const panelRef = useRef(null);
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!open) return undefined;

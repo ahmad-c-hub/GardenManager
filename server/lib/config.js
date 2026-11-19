@@ -9,7 +9,10 @@ export const allowedOrigins = new Set(
 );
 
 export const AUTH_COOKIE = 'gm_session';
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+// 2 years. Removing a user still revokes access at once (requireAuth re-checks the user on
+// every request). Note: Chrome caps cookie lifetimes at 400 days, so there the cookie
+// itself expires after ~13 months even though the token inside is valid for longer.
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 365 * 2; // 2 years
 
 export function getJwtSecret() {
   const secret = process.env.JWT_SECRET;

@@ -8,17 +8,18 @@ import {
   ImagePlus,
   Move,
   Pencil,
+  RotateCcw,
   Trash2,
   X,
 } from 'lucide-react';
-import { api } from '../lib/api.js';
+import { ApiError, api } from '../lib/api.js';
+import { useFocusTrap } from '../lib/useFocusTrap.js';
 import { useToast } from '../lib/toast.jsx';
 import { imageVariant } from '../lib/cloudinary.js';
 import { checkUpload, mediaKindOf, uploadToCloudinary } from '../lib/uploadToCloudinary.js';
 import { runLimited } from '../lib/gardenWalk.js';
 import { ConfirmDialog, FormError, Modal } from './ui.jsx';
 
-const EASE = [0.22, 1, 0.36, 1];
 const MAX_LABEL = 80;
 const MAX_NOTE = 1000;
 const MAX_FILES = 20;
@@ -125,20 +126,29 @@ export function OverflowMenu({ items, disabled, placement = 'down', className = 
 /* Carousel                                                             */
 /* ------------------------------------------------------------------ */
 
-function ImageSlide({ item, label }) {
+function ImageSlide({ item, label, position }) {
+  const [state, setState] = useState('loading'); // loading | ready | failed
   return (
-    <img
-      className="gwg-media"
-      src={imageVariant(item.media_url, 'c_limit,w_1600')}
-      alt={`Photo of ${label}`}
-      loading="lazy"
-      decoding="async"
-      draggable={false}
-    />
+    <div className={`gwg-photo is-${state}`}>
+      {state === 'failed' ? (
+        <p className="gwg-media-failed">This photo couldn’t be loaded.</p>
+      ) : (
+        <img
+          className="gwg-media"
+          src={imageVariant(item.media_url, 'c_limit,w_1600')}
+          alt={`Photo ${position} of ${label}`}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onLoad={() => setState('ready')}
+          onError={() => setState('failed')}
+        />
+      )}
+    </div>
   );
 }
 
-function VideoSlide({ item, label, active }) {
+function VideoSlide({ item, label, position, active }) {
   const ref = useRef(null);
   // Swiping away (or walking on) pauses; unmounting on close stops it anyway.
   useEffect(() => {
@@ -156,7 +166,7 @@ function VideoSlide({ item, label, active }) {
       controls
       playsInline
       preload="metadata"
-      aria-label={`Video of ${label}`}
+      aria-label={`Video ${position} of ${label}`}
     />
   );
 }
@@ -214,7 +224,11 @@ function Carousel({ media, index, onIndex, label }) {
   }
 
   return (
-    <div className="gwg-carousel">
+    <div className="gwg-carousel" role="region" aria-roledescription="carousel" aria-label={`Photos and videos of ${label}`}>
+      {/* Spoken on every slide change: "Image 2 of 5". */}
+      <p className="visually-hidden" aria-live="polite" aria-atomic="true">
+        {media[index] ? `${media[index].media_type === 'video' ? 'Video' : 'Image'} ${index + 1} of ${count}` : ''}
+      </p>
       <div className="gwg-viewport" ref={viewport}>
         <motion.div
           className="gwg-track"
@@ -234,14 +248,17 @@ function Carousel({ media, index, onIndex, label }) {
               <div
                 key={item.id}
                 className="gwg-slide"
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${i + 1} of ${count}`}
                 aria-hidden={i !== index}
                 inert={i !== index ? true : undefined}
               >
                 {near &&
                   (item.media_type === 'video' ? (
-                    <VideoSlide item={item} label={label} active={i === index} />
+                    <VideoSlide item={item} label={label} position={i + 1} active={i === index} />
                   ) : (
-                    <ImageSlide item={item} label={label} />
+                    <ImageSlide item={item} label={label} position={i + 1} />
                   ))}
               </div>
             );
@@ -249,12 +266,12 @@ function Carousel({ media, index, onIndex, label }) {
         </motion.div>
 
         {index > 0 && (
-          <button type="button" className="gwg-slide-btn prev" onClick={() => onIndex(index - 1)} aria-label="Previous photo">
+          <button type="button" className="gwg-slide-btn prev" onClick={() => onIndex(index - 1)} aria-label="Previous item">
             <ChevronLeft />
           </button>
         )}
         {index < count - 1 && (
-          <button type="button" className="gwg-slide-btn next" onClick={() => onIndex(index + 1)} aria-label="Next photo">
+          <button type="button" className="gwg-slide-btn next" onClick={() => onIndex(index + 1)} aria-label="Next item">
             <ChevronRight />
           </button>
         )}
@@ -276,7 +293,7 @@ function Carousel({ media, index, onIndex, label }) {
               ))}
             </div>
           )}
-          <span className="gwg-counter" aria-live="polite">
+          <span className="gwg-counter" aria-hidden="true">
             {index + 1} / {count}
           </span>
         </div>
@@ -384,7 +401,7 @@ const shortName = (pin) => (pin.label.length > 22 ? `${pin.label.slice(0, 21)}�
  * walk controls. Mounted inside <AnimatePresence custom={origin}> by the page:
  * it opens from, and closes back into, the pin on the map.
  */
-export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNext, onClose, onPinChange, onPinDeleted, onMove }) {
+export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNext, onClose, onPinChange, onPinPatch, onPinDeleted, onMove }) {
   const reduce = useReducedMotion();
   const toast = useToast();
   const closeRef = useRef(null);
@@ -394,6 +411,9 @@ export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNe
   const [dialog, setDialog] = useState(null); // null | 'media' | 'last' | 'pin' | 'edit'
   const [menuOpen, setMenuOpen] = useState(false);
   const [upload, setUpload] = useState(null); // { progress, done, total }
+  const [failedUpload, setFailedUpload] = useState(null); // { items, message }
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef, true);
 
   // Each pin opens on its first item; a walk to another pin starts over.
   const index = view.pinId === pin.id ? Math.min(view.index, pin.media.length - 1) : 0;
@@ -428,38 +448,45 @@ export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNe
     return () => window.removeEventListener('keydown', onKey);
   }, [suspended, index, pin.media.length, setIndex, onClose]);
 
-  async function addMedia(fileList) {
+  function addMedia(fileList) {
     const files = [...fileList];
     if (files.length === 0) return;
     const problems = [];
-    const ok = [];
+    const items = [];
     for (const file of files) {
       const kind = mediaKindOf(file);
       const problem = checkUpload(file, kind ?? 'image');
       if (problem) problems.push(problem);
-      else ok.push({ file, kind, progress: 0 });
+      else items.push({ file, kind, result: null });
     }
-    if (ok.length > MAX_FILES) {
+    if (items.length > MAX_FILES) {
       problems.push(`Add up to ${MAX_FILES} files at a time.`);
-      ok.length = MAX_FILES;
+      items.length = MAX_FILES;
     }
     if (problems.length) toast.error(problems.join(' '));
-    if (ok.length === 0) return;
+    if (items.length) runUpload(items);
+  }
 
+  /**
+   * Upload whatever in `items` isn't uploaded yet, then attach them all to the pin.
+   * On failure the items (and any finished uploads) are kept, so Retry only redoes what's missing.
+   */
+  async function runUpload(items) {
+    setFailedUpload(null);
     const controller = new AbortController();
     abortRef.current = controller;
-    const progressOf = () => ok.reduce((s, f) => s + f.progress, 0) / ok.length;
-    const results = new Array(ok.length);
-    let done = 0;
-    setUpload({ progress: 0, done, total: ok.length });
+    const progress = items.map((it) => (it.result ? 1 : 0));
+    let done = items.filter((it) => it.result).length;
+    setUpload({ progress: done / items.length, done, total: items.length });
     try {
-      await runLimited(ok.map((f, i) => ({ ...f, i })), UPLOAD_CONCURRENCY, async (item) => {
-        results[item.i] = await uploadToCloudinary(
+      await runLimited(items.filter((it) => !it.result), UPLOAD_CONCURRENCY, async (item) => {
+        const i = items.indexOf(item);
+        item.result = await uploadToCloudinary(
           item.file,
           item.kind,
           (p) => {
-            ok[item.i].progress = p;
-            setUpload((u) => u && { ...u, progress: progressOf() });
+            progress[i] = p;
+            setUpload((u) => u && { ...u, progress: progress.reduce((a, b) => a + b, 0) / items.length });
           },
           { signal: controller.signal },
         );
@@ -468,25 +495,42 @@ export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNe
       });
       setUpload((u) => u && { ...u, saving: true });
       const firstNew = pin.media.length;
-      const updated = await api.post(`/garden-walk/pins/${pin.id}/media`, { media: results });
+      const updated = await api.post(`/garden-walk/pins/${pin.id}/media`, { media: items.map((it) => it.result) });
       onPinChange(updated);
       setView({ pinId: pin.id, index: firstNew });
-      toast.success(ok.length === 1 ? 'Added to the spot' : `${ok.length} files added`);
+      toast.success(items.length === 1 ? 'Added to the spot' : `${items.length} files added`);
     } catch (err) {
-      if (err.name !== 'AbortError') toast.error(err.message);
+      if (err.name === 'AbortError') return;
+      // The server turned the files down and may have deleted some of them: upload afresh next time.
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) items.forEach((it) => (it.result = null));
+      setFailedUpload({ items, message: err.message });
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setUpload(null);
     }
   }
 
-  async function deleteCurrent() {
-    await api.del(`/garden-walk/pins/${pin.id}/media/${current.id}`);
-    const media = pin.media.filter((m) => m.id !== current.id).map((m, i) => ({ ...m, position: i }));
-    onPinChange({ ...pin, media, media_count: media.length });
-    setView({ pinId: pin.id, index: Math.min(index, media.length - 1) });
+  // Optimistic: the item disappears at once; if the server says no, it comes back where it was.
+  function deleteCurrent() {
+    const removed = current;
+    const at = index;
+    const noun = removed.media_type === 'video' ? 'video' : 'photo';
+    const renumber = (media) => media.map((m, i) => ({ ...m, position: i }));
+    onPinPatch(pin.id, (p) => {
+      const media = renumber(p.media.filter((m) => m.id !== removed.id));
+      return { ...p, media, media_count: media.length };
+    });
+    setView({ pinId: pin.id, index: Math.max(0, Math.min(at, pin.media.length - 2)) });
     setDialog(null);
-    toast.success(current.media_type === 'video' ? 'Video deleted' : 'Photo deleted');
+    api.del(`/garden-walk/pins/${pin.id}/media/${removed.id}`).catch((err) => {
+      onPinPatch(pin.id, (p) => {
+        if (p.media.some((m) => m.id === removed.id)) return p;
+        const media = [...p.media];
+        media.splice(Math.min(at, media.length), 0, removed);
+        return { ...p, media: renumber(media), media_count: media.length };
+      });
+      toast.error(`Couldn’t delete that ${noun}, so it’s back. ${err.message}`);
+    });
   }
 
   async function deletePin() {
@@ -536,6 +580,7 @@ export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNe
         onClick={onClose}
       />
       <motion.div
+        ref={panelRef}
         className="gwg"
         role="dialog"
         aria-modal="true"
@@ -593,7 +638,22 @@ export function PinGallery({ pin, origin, prevPin, nextPin, travel, onPrev, onNe
           )}
 
           <div className="gwg-actions">
-            {busy ? (
+            {failedUpload && !busy ? (
+              <div className="gwg-failed" role="alert">
+                <span>
+                  <strong>
+                    {failedUpload.items.length === 1 ? 'Couldn’t add the file.' : `Couldn’t add ${failedUpload.items.length} files.`}
+                  </strong>{' '}
+                  {failedUpload.message}
+                </span>
+                <button type="button" className="gwg-action primary" onClick={() => runUpload(failedUpload.items)}>
+                  <RotateCcw /> Retry
+                </button>
+                <button type="button" className="gwg-icon-btn" onClick={() => setFailedUpload(null)} aria-label="Dismiss">
+                  <X />
+                </button>
+              </div>
+            ) : busy ? (
               <div className="gwg-uploading" role="status">
                 <UploadStatus upload={upload} label={`Uploading ${Math.min(upload.done + 1, upload.total)} of ${upload.total}`} savingLabel="Adding to the spot…" />
                 <button type="button" className="gwg-icon-btn" onClick={() => abortRef.current?.abort()} aria-label="Cancel upload">
