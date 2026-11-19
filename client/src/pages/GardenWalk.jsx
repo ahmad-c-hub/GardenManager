@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Check, EllipsisVertical, Film, Footprints, ImagePlus, ImageUp, MapPinPlus, Move, X } from 'lucide-react';
+import { Check, Film, Footprints, ImagePlus, ImageUp, MapPinPlus, Move, X } from 'lucide-react';
 import { ApiError, api } from '../lib/api.js';
 import { useToast } from '../lib/toast.jsx';
 import { imageVariant, isCloudinary } from '../lib/cloudinary.js';
 import { checkUpload, mediaKindOf, uploadToCloudinary } from '../lib/uploadToCloudinary.js';
+import { nextInWalk, runLimited, travelVector } from '../lib/gardenWalk.js';
 import { ConfirmDialog, ErrorBanner, FormError, Modal, PageHeader } from '../components/ui.jsx';
 import { GardenPlanArt } from '../components/Botanical.jsx';
+import { OverflowMenu, PinGallery, UploadStatus } from '../components/PinGallery.jsx';
 
 const EASE = [0.22, 1, 0.36, 1];
 const MAX_LABEL = 80;
@@ -60,12 +62,13 @@ function PinMarker({ pin, delay, selected, inert, onSelect }) {
       className={`gw-pin ${selected ? 'is-selected' : ''}`}
       style={{ left: `${pin.x_percent}%`, top: `${pin.y_percent}%` }}
       data-side={labelSide(pin.x_percent)}
+      data-pin-id={pin.id}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(pin);
       }}
       tabIndex={inert ? -1 : 0}
-      aria-pressed={selected}
+      aria-haspopup="dialog"
       aria-label={`${pin.label}, ${pin.media_count} ${pin.media_count === 1 ? 'photo or video' : 'photos and videos'}`}
     >
       <motion.span
@@ -144,7 +147,8 @@ function GhostPin({ point, imageRef, draggable, onMove, onDragged }) {
 /* Map                                                                  */
 /* ------------------------------------------------------------------ */
 
-function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, selectedId, onSelect, mapUpload }) {
+function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, activeId, trail, movingId, onSelect, mapUpload }) {
+  const reduce = useReducedMotion();
   const imageRef = useRef(null);
   const justDragged = useRef(false);
   const [ready, setReady] = useState(false);
@@ -158,8 +162,8 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
 
   const adding = stage !== 'idle';
   const ratio = map.width && map.height ? map.width / map.height : null;
-  // Lower pins are drawn over higher ones, as on a real map.
-  const ordered = [...pins].sort((a, b) => a.y_percent - b.y_percent);
+  // Lower pins are drawn over higher ones, as on a real map. The pin being moved is shown as the ghost instead.
+  const ordered = pins.filter((p) => p.id !== movingId).sort((a, b) => a.y_percent - b.y_percent);
 
   function tap(e) {
     if (!adding) return onBackgroundTap();
@@ -172,7 +176,7 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
   }
 
   return (
-    <div className={`gw-frame ${adding ? 'is-adding' : ''}`}>
+    <div className={`gw-frame ${adding ? 'is-adding' : ''} ${activeId ? 'is-walking' : ''}`}>
       <div
         className={`gw-canvas ${ratio ? 'has-ratio' : ''}`}
         style={ratio ? { aspectRatio: ratio, '--ratio': ratio } : undefined}
@@ -191,13 +195,35 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
           onLoad={() => setReady(true)}
         />
 
+        {/* The last step of the walk, as a faint dashed path between pins. Percent
+            coordinates map straight onto the stretched viewBox; strokes stay crisp. */}
+        {ready && (
+          <svg className="gw-trail" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <AnimatePresence>
+              {trail && (
+                <motion.line
+                  key={`${trail.from.id}-${trail.to.id}`}
+                  x1={trail.from.x_percent}
+                  y1={trail.from.y_percent}
+                  vectorEffect="non-scaling-stroke"
+                  // Grow the line from the previous pin (not pathLength, which would replace the dashes).
+                  initial={{ opacity: 0, x2: reduce ? trail.to.x_percent : trail.from.x_percent, y2: reduce ? trail.to.y_percent : trail.from.y_percent }}
+                  animate={{ opacity: 1, x2: trail.to.x_percent, y2: trail.to.y_percent }}
+                  exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                  transition={{ duration: reduce ? 0.2 : 0.7, ease: EASE }}
+                />
+              )}
+            </AnimatePresence>
+          </svg>
+        )}
+
         {ready &&
           ordered.map((pin, i) => (
             <PinMarker
               key={pin.id}
               pin={pin}
               delay={firstPins.current?.has(pin.id) ? 0.15 + i * 0.07 : 0}
-              selected={pin.id === selectedId}
+              selected={pin.id === activeId}
               inert={adding}
               onSelect={onSelect}
             />
@@ -209,7 +235,7 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
               key="ghost"
               point={ghost}
               imageRef={imageRef}
-              draggable={stage === 'dropping' || stage === 'adjusting'}
+              draggable={stage === 'dropping' || stage === 'adjusting' || stage === 'moving'}
               onMove={setGhost}
               onDragged={() => {
                 justDragged.current = true;
@@ -232,18 +258,6 @@ function GardenMap({ map, pins, stage, ghost, setGhost, onTap, onBackgroundTap, 
           )}
         </AnimatePresence>
       </div>
-    </div>
-  );
-}
-
-function UploadStatus({ upload, label }) {
-  const pct = Math.round(upload.progress * 100);
-  return (
-    <div className="gw-upload-status">
-      <span>{upload.saving ? 'Laying it out…' : `${label}… ${pct}%`}</span>
-      <span className="gw-progress" aria-hidden="true">
-        <span style={{ transform: `scaleX(${upload.saving ? 1 : upload.progress})` }} />
-      </span>
     </div>
   );
 }
@@ -288,73 +302,6 @@ function EmptyGarden({ onUpload, upload }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Overflow menu                                                        */
-/* ------------------------------------------------------------------ */
-
-function OverflowMenu({ items, disabled }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  const menuId = useId();
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const away = (e) => !ref.current?.contains(e.target) && setOpen(false);
-    const key = (e) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('pointerdown', away);
-    window.addEventListener('keydown', key);
-    ref.current?.querySelector('[role="menuitem"]')?.focus();
-    return () => {
-      document.removeEventListener('pointerdown', away);
-      window.removeEventListener('keydown', key);
-    };
-  }, [open]);
-
-  return (
-    <div className="gw-menu" ref={ref}>
-      <button
-        type="button"
-        className="btn btn-secondary gw-menu-btn"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        aria-label="More options"
-        disabled={disabled}
-      >
-        <EllipsisVertical />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            id={menuId}
-            className="gw-menu-list"
-            role="menu"
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98, transition: { duration: 0.12 } }}
-            transition={{ type: 'spring', stiffness: 520, damping: 34 }}
-          >
-            {items.map(({ label, icon: Icon, onSelect }) => (
-              <button
-                key={label}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onSelect();
-                }}
-              >
-                <Icon /> {label}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* New pin form                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -363,24 +310,6 @@ const blankDraft = () => ({ label: '', note: '', files: [] });
 
 function revokeAll(files) {
   for (const f of files) URL.revokeObjectURL(f.url);
-}
-
-/** Run `fn` over `items`, at most `limit` at a time. Every item runs; the first failure is rethrown at the end. */
-async function runLimited(items, limit, fn) {
-  let next = 0;
-  let firstError = null;
-  const worker = async () => {
-    while (next < items.length) {
-      const item = items[next++];
-      try {
-        await fn(item);
-      } catch (err) {
-        firstError ??= err;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  if (firstError) throw firstError;
 }
 
 function FileThumb({ item, disabled, onRemove }) {
@@ -610,6 +539,7 @@ function PinForm({ draft, setDraft, point, onCreated, onCancel, onAdjust, onBusy
         <div className="gw-form-progress mt-4" role="status">
           <UploadStatus
             upload={{ progress: overall, saving: phase === 'saving' }}
+            savingLabel="Saving the spot…"
             label={`Uploading ${Math.min(doneCount + 1, total)} of ${total}`}
           />
         </div>
@@ -649,6 +579,16 @@ function PinForm({ draft, setDraft, point, onCreated, onCancel, onAdjust, onBusy
 
 // Add-pin flow: idle → placing (tap the map) → dropping (ghost lands, still draggable)
 // → details (form open) ⇄ adjusting (form hidden, drag the ghost) → idle on save.
+// Moving a pin: idle → moving (the pin becomes a draggable ghost) → idle on Save/Cancel.
+
+/** Viewport centre of a pin's marker, for the gallery to open from and close into. */
+function pinOrigin(id) {
+  const el = document.querySelector(`.gw-pin[data-pin-id="${id}"] .gw-marker-art`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
 export default function GardenWalk() {
   const toast = useToast();
   const [data, setData] = useState(null);
@@ -657,7 +597,11 @@ export default function GardenWalk() {
   const [ghost, setGhost] = useState(null);
   const [draft, setDraft] = useState(blankDraft);
   const [formBusy, setFormBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState(null);
+  const [movingPin, setMovingPin] = useState(null);
+  const [savingMove, setSavingMove] = useState(false);
+  // The walk session: pins visited in order (the last is open), and which way we last travelled.
+  const [walk, setWalk] = useState(null); // { history: number[], visited: Set<number>, travel: {x, y} }
+  const [origin, setOrigin] = useState(null);
   const [mapUpload, setMapUpload] = useState(null); // { progress, saving } while a layout uploads
   const [confirmReplace, setConfirmReplace] = useState(false);
   const mapInput = useRef(null);
@@ -683,14 +627,61 @@ export default function GardenWalk() {
     revokeAll(draftRef.current.files);
   }, []);
 
-  // A "new spot" notification links to /garden-walk?pin=<id>: select it once loaded.
+  const pins = useMemo(() => data?.pins ?? [], [data]);
+  const ratio = data?.map?.width && data?.map?.height ? data.map.width / data.map.height : 1;
+  const byId = useMemo(() => new Map(pins.map((p) => [p.id, p])), [pins]);
+  const currentId = walk?.history.at(-1) ?? null;
+  const currentPin = currentId ? byId.get(currentId) : null;
+  const prevPin = walk && walk.history.length > 1 ? byId.get(walk.history.at(-2)) : null;
+  const nextPin = useMemo(
+    () => (walk && currentId ? nextInWalk(pins, currentId, walk.visited, ratio) : null),
+    [walk, currentId, pins, ratio],
+  );
+  const trail = prevPin && currentPin ? { from: prevPin, to: currentPin } : null;
+
+  const openPin = useCallback((pin) => {
+    setOrigin(pinOrigin(pin.id));
+    setWalk({ history: [pin.id], visited: new Set([pin.id]), travel: { x: 0, y: 0 } });
+  }, []);
+
+  // Closing ends the walk session; the gallery shrinks back into the pin it's showing.
+  const closeWalk = useCallback(() => {
+    setOrigin(currentId ? pinOrigin(currentId) : null);
+    setWalk(null);
+  }, [currentId]);
+
+  function walkTo(target, history) {
+    setOrigin(pinOrigin(target.id));
+    setWalk((w) => ({
+      history,
+      visited: new Set([...w.visited, target.id]),
+      travel: travelVector(currentPin, target, ratio),
+    }));
+  }
+  const walkNext = () => nextPin && walkTo(nextPin, [...walk.history, nextPin.id]);
+  const walkBack = () => prevPin && walkTo(prevPin, walk.history.slice(0, -1));
+
+  // A "new spot" notification links to /garden-walk?pin=<id>: open it once the map is drawn.
   const [params, setParams] = useSearchParams();
   const wanted = Number(params.get('pin')) || null;
   useEffect(() => {
-    if (!wanted || !data?.pins.some((p) => p.id === wanted)) return;
-    setSelectedId(wanted);
-    setParams({}, { replace: true });
-  }, [wanted, data, setParams]);
+    if (!wanted || !byId.has(wanted)) return undefined;
+    const t = setTimeout(() => {
+      openPin(byId.get(wanted));
+      setParams({}, { replace: true });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [wanted, byId, openPin, setParams]);
+
+  const updatePin = useCallback((pin) => {
+    setData((d) => ({ ...d, pins: d.pins.map((p) => (p.id === pin.id ? pin : p)) }));
+  }, []);
+
+  const removePin = useCallback((pin) => {
+    setOrigin(null);
+    setWalk(null);
+    setData((d) => ({ ...d, pins: d.pins.filter((p) => p.id !== pin.id) }));
+  }, []);
 
   const endAdding = useCallback((nextStage = 'idle') => {
     clearTimeout(dropTimer.current);
@@ -699,24 +690,21 @@ export default function GardenWalk() {
     setTimeout(() => revokeAll(files), 400);
     setDraft(blankDraft());
     setGhost(null);
+    setMovingPin(null);
     setStage(nextStage);
   }, []);
 
-  // Escape backs out of placing a pin (the modal handles its own Escape).
+  // Escape backs out of placing or moving a pin (the modal handles its own Escape).
   useEffect(() => {
     if (stage === 'idle' || stage === 'details') return undefined;
-    const onKey = (e) => e.key === 'Escape' && endAdding();
+    const onKey = (e) => e.key === 'Escape' && !savingMove && endAdding();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [stage, endAdding]);
+  }, [stage, endAdding, savingMove]);
 
   function toggleAdding() {
-    if (stage === 'idle') {
-      setSelectedId(null);
-      setStage('placing');
-    } else {
-      endAdding();
-    }
+    if (stage === 'idle') setStage('placing');
+    else endAdding();
   }
 
   function tapMap(point) {
@@ -728,16 +716,30 @@ export default function GardenWalk() {
     }
   }
 
-  function selectPin(pin) {
-    // Placeholder until the pin gallery exists: selecting shows its label.
-    setSelectedId((id) => (id === pin.id ? null : pin.id));
-  }
-
   function created(pin) {
     setData((d) => ({ ...d, pins: [...d.pins, pin] }));
     endAdding();
-    setSelectedId(pin.id);
     toast.success(`“${pin.label}” added to the walk`);
+  }
+
+  function startMove(pin) {
+    closeWalk();
+    setMovingPin(pin);
+    setGhost({ x: pin.x_percent, y: pin.y_percent });
+    setStage('moving');
+  }
+
+  async function saveMove() {
+    setSavingMove(true);
+    try {
+      updatePin(await api.put(`/garden-walk/pins/${movingPin.id}`, { x_percent: ghost.x, y_percent: ghost.y }));
+      toast.success(`“${movingPin.label}” moved`);
+      endAdding();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingMove(false);
+    }
   }
 
   // Closing the form (Cancel, ×, Escape, backdrop) drops this pin but stays in add mode.
@@ -772,7 +774,9 @@ export default function GardenWalk() {
       ? 'Tap the map to drop a pin'
       : stage === 'dropping' || stage === 'adjusting'
         ? 'Drag the pin to fine-tune its spot'
-        : null;
+        : stage === 'moving'
+          ? `Drag “${movingPin?.label}” to its new spot`
+          : null;
 
   return (
     <div className={`gw-page ${adding ? 'is-adding' : ''}`}>
@@ -780,7 +784,7 @@ export default function GardenWalk() {
         eyebrow="Garden walk"
         eyebrowIcon={Footprints}
         title={<>Garden <em>walk</em></>}
-        subtitle={data?.map ? 'Every bed and corner, pinned where it grows.' : undefined}
+        subtitle={data?.map ? 'Every bed and corner, pinned where it grows. Tap a pin to start walking.' : undefined}
         actions={
           data?.map && (
             <>
@@ -789,11 +793,11 @@ export default function GardenWalk() {
                 className={`btn ${adding ? 'btn-secondary' : 'btn-primary'} gw-add-btn`}
                 onClick={toggleAdding}
                 aria-pressed={adding}
-                disabled={Boolean(mapUpload)}
+                disabled={Boolean(mapUpload) || savingMove}
               >
                 {adding ? (
                   <>
-                    <X /> Cancel pin
+                    <X /> {stage === 'moving' ? 'Cancel move' : 'Cancel pin'}
                   </>
                 ) : (
                   <>
@@ -821,7 +825,7 @@ export default function GardenWalk() {
             exit={{ opacity: 0, y: -6, transition: { duration: 0.15 } }}
             transition={{ duration: 0.25, ease: EASE }}
           >
-            <MapPinPlus aria-hidden="true" /> {hint}
+            {stage === 'moving' ? <Move aria-hidden="true" /> : <MapPinPlus aria-hidden="true" />} {hint}
           </motion.p>
         )}
       </AnimatePresence>
@@ -836,17 +840,19 @@ export default function GardenWalk() {
         <>
           <GardenMap
             map={data.map}
-            pins={data.pins}
+            pins={pins}
             stage={stage}
             ghost={ghost}
             setGhost={setGhost}
             onTap={tapMap}
-            onBackgroundTap={() => setSelectedId(null)}
-            selectedId={selectedId}
-            onSelect={selectPin}
+            onBackgroundTap={() => {}}
+            activeId={currentId}
+            trail={trail}
+            movingId={movingPin?.id}
+            onSelect={openPin}
             mapUpload={mapUpload}
           />
-          {data.pins.length === 0 && stage === 'idle' && (
+          {pins.length === 0 && stage === 'idle' && (
             <p className="gw-first-pin">
               No spots yet. Choose <strong>Add pin</strong> and tap a bed to start the walk.
             </p>
@@ -854,20 +860,34 @@ export default function GardenWalk() {
         </>
       )}
 
-      {/* While fine-tuning, the way back to the form stays within thumb reach. */}
+      {/* While fine-tuning or moving, the way out stays within thumb reach. */}
       <AnimatePresence>
-        {stage === 'adjusting' && (
+        {(stage === 'adjusting' || stage === 'moving') && (
           <motion.div
+            key={stage}
             className="gw-adjust-bar"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16, transition: { duration: 0.15 } }}
             transition={{ type: 'spring', stiffness: 420, damping: 34 }}
           >
-            <span>Drag the pin, or tap a new spot.</span>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setStage('details')}>
-              <Check /> Done
-            </button>
+            {stage === 'adjusting' ? (
+              <>
+                <span>Drag the pin, or tap a new spot.</span>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setStage('details')}>
+                  <Check /> Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn btn-sm gw-bar-cancel" onClick={() => endAdding()} disabled={savingMove}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary btn-sm gw-bar-save" onClick={saveMove} disabled={savingMove}>
+                  {savingMove ? <span className="spinner" /> : <Check />} Save position
+                </button>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -885,6 +905,25 @@ export default function GardenWalk() {
         tabIndex={-1}
         aria-hidden="true"
       />
+
+      <AnimatePresence custom={origin}>
+        {currentPin && (
+          <PinGallery
+            key="gallery"
+            pin={currentPin}
+            origin={origin}
+            prevPin={prevPin}
+            nextPin={nextPin}
+            travel={walk.travel}
+            onPrev={walkBack}
+            onNext={walkNext}
+            onClose={closeWalk}
+            onPinChange={updatePin}
+            onPinDeleted={removePin}
+            onMove={startMove}
+          />
+        )}
+      </AnimatePresence>
 
       <Modal
         open={stage === 'details'}
