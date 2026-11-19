@@ -17,6 +17,7 @@ import momentsRouter from './routes/moments.js';
 import workItemsRouter from './routes/workItems.js';
 import tennisRouter from './routes/tennis.js';
 import assistantRouter from './routes/assistant.js';
+import gardenWalkRouter from './routes/gardenWalk.js';
 import { startReminderJobs } from './jobs/reminders.js';
 import {
   bedsRouter,
@@ -43,6 +44,9 @@ app.use(
         'font-src': ["'self'", 'https://fonts.gstatic.com'],
         // Moment photos come from Cloudinary; blob: is the local preview before upload.
         'img-src': ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
+        // Garden Walk videos play from Cloudinary, and its files upload straight there from the browser.
+        'media-src': ["'self'", 'blob:', 'https://res.cloudinary.com'],
+        'connect-src': ["'self'", 'https://api.cloudinary.com'],
       },
     },
   }),
@@ -88,6 +92,7 @@ app.use('/api/moments', momentsRouter);
 app.use('/api/work-items', workItemsRouter);
 app.use('/api/tennis', tennisRouter);
 app.use('/api/assistant', assistantRouter);
+app.use('/api/garden-walk', gardenWalkRouter);
 app.use('/api', notFoundHandler);
 
 // In production, serve the built React app. The SPA itself shows only the

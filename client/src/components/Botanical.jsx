@@ -236,3 +236,73 @@ export function JournalArt({ className = 'journal-art' }) {
     </svg>
   );
 }
+
+/** Empty-state scene for Garden Walk: a hand-drawn garden plan on paper, a path of footprints, a pin. */
+export function GardenPlanArt({ className = 'garden-plan-art' }) {
+  const reduce = useReducedMotion();
+  const line = { fill: 'none', stroke: '#7f9c7e', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const sprout = (x, y, s = 1, color = '#3f8a5a') => (
+    <g key={`${x}-${y}`} transform={`translate(${x} ${y}) scale(${s})`}>
+      <path d="M0 0v-7" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
+      <path d={leafPath(7, 3.6)} fill="#9dbb93" transform="translate(0 -5) rotate(-140)" />
+      <path d={leafPath(7, 3.6)} fill={color} transform="translate(0 -6) rotate(-40)" />
+    </g>
+  );
+  const steps = [
+    [118, 192, -20], [132, 178, -32], [146, 168, -46], [164, 160, -62],
+    [184, 156, -78], [204, 150, -64], [220, 138, -40],
+  ];
+  return (
+    <svg className={className} viewBox="0 0 320 240" aria-hidden="true">
+      <ellipse cx="160" cy="220" rx="122" ry="9" fill="#e3d8c4" opacity="0.7" />
+
+      {/* The paper plan, slightly askew */}
+      <g transform="rotate(-3 160 120)">
+        <rect x="48" y="34" width="224" height="176" rx="10" fill="#fffdf8" stroke="#e6dccb" />
+        <path d="M60 46h200v152H60z" fill="none" stroke="#e6dccb" strokeDasharray="2 5" />
+
+        {/* Raised beds */}
+        <rect x="74" y="60" width="70" height="38" rx="6" fill="#f1f5ec" {...line} />
+        <rect x="160" y="60" width="86" height="38" rx="6" fill="#f1f5ec" {...line} />
+        <rect x="74" y="112" width="40" height="70" rx="6" fill="#f1f5ec" {...line} />
+        {[86, 100, 114, 128].map((x) => sprout(x, 86, 1, '#3f8a5a'))}
+        {[174, 190, 206, 222, 236].map((x, i) => sprout(x, 86, i % 2 ? 0.85 : 1))}
+        {[128, 146, 164].map((y) => sprout(94, y, 0.95))}
+
+        {/* A round tree canopy */}
+        <circle cx="236" cy="168" r="22" fill="#e6eedf" {...line} />
+        <path d="M236 152c6 6 6 26 0 32M222 166c8-2 20-2 28 2" {...line} strokeWidth="1.1" opacity="0.7" />
+
+        {/* Winding path */}
+        <path d="M112 206C126 182 150 162 186 156s38-14 46-30" fill="none" stroke="#e3d8c4" strokeWidth="12" strokeLinecap="round" />
+      </g>
+
+      {/* Footprints along the path */}
+      {steps.map(([x, y, r], i) => (
+        <g key={i} transform={`translate(${x} ${y}) rotate(${r + 90}) translate(${i % 2 ? 3 : -3} 0)`}>
+          <ellipse cx="0" cy="0" rx="2.6" ry="4.2" fill="#b25c31" opacity="0.5">
+            {!reduce && (
+              <animate attributeName="opacity" values="0;0.55;0.55;0" keyTimes="0;0.15;0.75;1" dur="5s" begin={`${i * 0.45}s`} repeatCount="indefinite" />
+            )}
+          </ellipse>
+        </g>
+      ))}
+
+      {/* The pin, dropped where the walk ends */}
+      <g transform="translate(232 102)">
+        <ellipse cx="0" cy="2" rx="7" ry="2.4" fill="#163a27" opacity="0.16" />
+        <g>
+          {!reduce && (
+            <animateTransform attributeName="transform" type="translate" values="0 0;0 -4;0 0" dur="3.2s" repeatCount="indefinite"
+              calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1" />
+          )}
+          <path d="M0 0C0 0-13-14-13-24a13 13 0 0 1 26 0C13-14 0 0 0 0Z" fill="#d07c45" stroke="#fffdf8" strokeWidth="3" />
+          <path d={leafPath(11, 6)} fill="#fffdf8" transform="translate(-5 -20) rotate(-40)" />
+        </g>
+      </g>
+
+      <Frond x={34} y={222} rotate={18} length={92} bend={14} leaves={8} leafSize={24} color="#9dbb93" sway={1.6} duration={7} />
+      <RoundLeafStem x={292} y={220} rotate={-12} length={96} count={7} color="#b7cbb0" />
+    </svg>
+  );
+}

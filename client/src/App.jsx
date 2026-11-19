@@ -14,6 +14,7 @@ import Calendar from './pages/Calendar.jsx';
 import Tennis from './pages/Tennis.jsx';
 import TennisMatch from './pages/TennisMatch.jsx';
 import Assistant from './pages/Assistant.jsx';
+import GardenWalk from './pages/GardenWalk.jsx';
 
 function Splash() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="calendar" element={<Calendar />} />
         <Route path="tennis" element={<Tennis />} />
         <Route path="tennis/matches/:matchId" element={<TennisMatch />} />
+        <Route path="garden-walk" element={<GardenWalk />} />
         <Route path="moments" element={<Moments />} />
         <Route path="assistant" element={<Assistant />} />
         <Route path="assistant/:conversationId" element={<Assistant />} />

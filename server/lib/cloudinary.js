@@ -52,11 +52,69 @@ export function uploadImage(buffer, { folder = DEFAULT_FOLDER } = {}) {
 }
 
 /** Delete an uploaded image. Never throws: a leftover asset isn't worth failing a request over. */
-export async function deleteImage(publicId) {
+export function deleteImage(publicId) {
+  return deleteAsset(publicId, 'image');
+}
+
+/** Delete an uploaded image or video. Never throws (failures are logged). */
+export async function deleteAsset(publicId, resourceType = 'image') {
   if (!cloudinaryEnabled || !publicId) return;
   try {
-    await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType, invalidate: true });
   } catch (err) {
-    console.error(`Could not delete Cloudinary image ${publicId}:`, err.message);
+    console.error(`Could not delete Cloudinary ${resourceType} ${publicId}:`, err.message);
   }
+}
+
+/**
+ * Sign a browser → Cloudinary direct upload. Only the signature leaves the
+ * server; the secret never does. Every param signed here must be sent by the
+ * browser unchanged, or Cloudinary rejects the upload.
+ */
+export function signUpload({ folder, resourceType, transformation }) {
+  const timestamp = Math.round(Date.now() / 1000);
+  const params = { timestamp, folder, ...(transformation ? { transformation } : {}) };
+  return {
+    cloudName: CLOUDINARY_CLOUD_NAME,
+    apiKey: CLOUDINARY_API_KEY,
+    timestamp,
+    signature: cloudinary.utils.api_sign_request(params, CLOUDINARY_API_SECRET),
+    folder,
+    resourceType,
+    ...(transformation ? { transformation } : {}),
+  };
+}
+
+/**
+ * The asset as Cloudinary actually stored it (real bytes/format/size), or null
+ * if there is no such asset. Used instead of trusting what the browser reports.
+ */
+export async function getAsset(publicId, resourceType) {
+  try {
+    // Videos only report duration when media metadata is requested.
+    return await cloudinary.api.resource(publicId, {
+      resource_type: resourceType,
+      ...(resourceType === 'video' ? { media_metadata: true } : {}),
+    });
+  } catch (err) {
+    const status = err.error?.http_code ?? err.http_code;
+    if (status === 404) return null;
+    throw err;
+  }
+}
+
+/** Secure delivery URL with automatic format and quality. */
+export function deliveryUrl(publicId, { resourceType = 'image', version } = {}) {
+  return cloudinary.url(publicId, {
+    resource_type: resourceType,
+    version,
+    fetch_format: 'auto',
+    quality: 'auto',
+    secure: true,
+  });
+}
+
+/** A JPEG of a video's first frame, for <video poster>. */
+export function videoPosterUrl(publicId) {
+  return cloudinary.url(publicId, { resource_type: 'video', start_offset: 0, format: 'jpg', secure: true });
 }

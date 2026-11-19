@@ -9,6 +9,7 @@ import './theme/components.css';
 import './theme/layout.css';
 import './theme/pages.css';
 import './theme/assistant.css';
+import './theme/garden-walk.css';
 
 import App from './App.jsx';
 import { AuthProvider } from './lib/auth.jsx';
